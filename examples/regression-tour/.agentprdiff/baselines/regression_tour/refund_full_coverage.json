@@ -1,0 +1,65 @@
+{
+  "case_name": "refund_full_coverage",
+  "suite_name": "regression_tour",
+  "input": "I want a refund for order #1234",
+  "output": "I can help with that. I've processed a refund of $89.00 for your order. You'll see it back on your card in 3\u20135 business days.",
+  "llm_calls": [
+    {
+      "provider": "mock",
+      "model": "mock-sonnet-1",
+      "input_messages": [
+        {
+          "role": "user",
+          "content": "I want a refund for order #1234"
+        }
+      ],
+      "output_text": "I need to look up the order first.",
+      "tool_calls": [],
+      "prompt_tokens": 18,
+      "completion_tokens": 12,
+      "cost_usd": 0.0002,
+      "latency_ms": 180.0,
+      "timestamp": ""
+    },
+    {
+      "provider": "mock",
+      "model": "mock-sonnet-1",
+      "input_messages": [
+        {
+          "role": "user",
+          "content": "I want a refund for order #1234"
+        }
+      ],
+      "output_text": "I can help with that. I've processed a refund of $89.00 for your order. You'll see it back on your card in 3\u20135 business days.",
+      "tool_calls": [],
+      "prompt_tokens": 60,
+      "completion_tokens": 25,
+      "cost_usd": 0.0008,
+      "latency_ms": 420.0,
+      "timestamp": ""
+    }
+  ],
+  "tool_calls": [
+    {
+      "name": "lookup_order",
+      "arguments": {
+        "order_id": "1234"
+      },
+      "result": {
+        "amount_usd": 89.0,
+        "status": "delivered",
+        "refundable": true
+      },
+      "latency_ms": 8.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.001,
+  "total_latency_ms": 608.0,
+  "total_prompt_tokens": 78,
+  "total_completion_tokens": 37,
+  "error": null,
+  "metadata": {},
+  "run_id": "7020649f333a",
+  "created_at": "2026-04-25T19:57:18+00:00"
+}

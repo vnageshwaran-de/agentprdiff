@@ -1,0 +1,51 @@
+{
+  "case_name": "policy_no_tools",
+  "suite_name": "regression_tour",
+  "input": "What is your return policy?",
+  "output": "Our return policy lets you return most items within 30 days of delivery for a full refund. Some exclusions apply \u2014 see our FAQ.",
+  "llm_calls": [
+    {
+      "provider": "mock",
+      "model": "mock-sonnet-1",
+      "input_messages": [
+        {
+          "role": "user",
+          "content": "What is your return policy?"
+        }
+      ],
+      "output_text": "I need to look up the order first.",
+      "tool_calls": [],
+      "prompt_tokens": 18,
+      "completion_tokens": 12,
+      "cost_usd": 0.0002,
+      "latency_ms": 180.0,
+      "timestamp": ""
+    },
+    {
+      "provider": "mock",
+      "model": "mock-sonnet-1",
+      "input_messages": [
+        {
+          "role": "user",
+          "content": "What is your return policy?"
+        }
+      ],
+      "output_text": "Our return policy lets you return most items within 30 days of delivery for a full refund. Some exclusions apply \u2014 see our FAQ.",
+      "tool_calls": [],
+      "prompt_tokens": 60,
+      "completion_tokens": 24,
+      "cost_usd": 0.0008,
+      "latency_ms": 420.0,
+      "timestamp": ""
+    }
+  ],
+  "tool_calls": [],
+  "total_cost_usd": 0.001,
+  "total_latency_ms": 600.0,
+  "total_prompt_tokens": 78,
+  "total_completion_tokens": 36,
+  "error": null,
+  "metadata": {},
+  "run_id": "f043dc688fb6",
+  "created_at": "2026-04-25T19:57:18+00:00"
+}

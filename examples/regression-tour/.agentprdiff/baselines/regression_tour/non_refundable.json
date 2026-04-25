@@ -1,0 +1,65 @@
+{
+  "case_name": "non_refundable",
+  "suite_name": "regression_tour",
+  "input": "I want a refund for order #9999",
+  "output": "I looked up your order but it isn't refundable at this stage (status: shipped). I can connect you with a human agent.",
+  "llm_calls": [
+    {
+      "provider": "mock",
+      "model": "mock-sonnet-1",
+      "input_messages": [
+        {
+          "role": "user",
+          "content": "I want a refund for order #9999"
+        }
+      ],
+      "output_text": "I need to look up the order first.",
+      "tool_calls": [],
+      "prompt_tokens": 18,
+      "completion_tokens": 12,
+      "cost_usd": 0.0002,
+      "latency_ms": 180.0,
+      "timestamp": ""
+    },
+    {
+      "provider": "mock",
+      "model": "mock-sonnet-1",
+      "input_messages": [
+        {
+          "role": "user",
+          "content": "I want a refund for order #9999"
+        }
+      ],
+      "output_text": "I looked up your order but it isn't refundable at this stage (status: shipped). I can connect you with a human agent.",
+      "tool_calls": [],
+      "prompt_tokens": 60,
+      "completion_tokens": 22,
+      "cost_usd": 0.0008,
+      "latency_ms": 420.0,
+      "timestamp": ""
+    }
+  ],
+  "tool_calls": [
+    {
+      "name": "lookup_order",
+      "arguments": {
+        "order_id": "9999"
+      },
+      "result": {
+        "amount_usd": 12.5,
+        "status": "shipped",
+        "refundable": false
+      },
+      "latency_ms": 8.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.001,
+  "total_latency_ms": 608.0,
+  "total_prompt_tokens": 78,
+  "total_completion_tokens": 34,
+  "error": null,
+  "metadata": {},
+  "run_id": "fb06f7821d1f",
+  "created_at": "2026-04-25T19:57:18+00:00"
+}
