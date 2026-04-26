@@ -3,12 +3,27 @@
 We deliberately keep this ultra-simple for v0.1: the user points at a python
 file path (or module) and we import it; every module-level `Suite` instance
 is a suite to run.
+
+Import-path setup: when we exec the suite file, we insert two directories
+onto ``sys.path``:
+
+1. The suite file's own parent directory — for sibling helpers, e.g. a
+   ``suite.py`` next to a ``stubs.py``.
+2. The current working directory — typically the project root from which
+   ``agentprdiff record`` was invoked. This lets the suite import the
+   adopter's own modules (``from agent.agent import ...``,
+   ``from config import ...``, ``from suites._eval_agent import ...``)
+   without forcing every adopter to manipulate ``sys.path`` themselves.
+
+Both insertions are reversed after exec so the runner's environment doesn't
+leak suite-specific paths into subsequent loads.
 """
 
 from __future__ import annotations
 
 import contextlib
 import importlib.util
+import os
 import sys
 from pathlib import Path
 
@@ -30,13 +45,23 @@ def load_suites(path: str | Path) -> list[Suite]:
     if spec is None or spec.loader is None:  # pragma: no cover
         raise ImportError(f"could not load suite file: {p}")
     module = importlib.util.module_from_spec(spec)
-    # Ensure the file's own directory is importable (for relative helpers).
-    sys.path.insert(0, str(p.parent))
+
+    # Make both the suite file's directory and the cwd importable. We track
+    # what we actually inserted so we only remove our own contributions.
+    parent_dir = str(p.parent)
+    cwd = os.getcwd()
+    inserted: list[str] = []
+    for entry in (parent_dir, cwd):
+        if entry and entry not in sys.path:
+            sys.path.insert(0, entry)
+            inserted.append(entry)
+
     try:
         spec.loader.exec_module(module)
     finally:
-        with contextlib.suppress(ValueError):
-            sys.path.remove(str(p.parent))
+        for entry in inserted:
+            with contextlib.suppress(ValueError):
+                sys.path.remove(entry)
 
     suites = [v for v in vars(module).values() if isinstance(v, Suite)]
     if not suites:
