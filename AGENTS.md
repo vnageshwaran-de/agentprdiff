@@ -4,6 +4,8 @@ You are an AI coding agent (Claude Code, Cursor, Aider, Copilot, or similar) and
 
 It is dense by design. Each section is self-contained and grep-friendly. Read it linearly the first time; on subsequent runs jump to the section you need.
 
+For the canonical file layout (what files to create, what's mandatory vs optional, what each contains), see [`docs/suite-layout.md`](./docs/suite-layout.md). Use it as the spec for your final diff before you tell the user you're done.
+
 If you are a human reader, the same content is here but `docs/writing-suites.md` (forthcoming) is friendlier prose. This file is optimized for an agent that wants to copy templates and substitute values.
 
 ---
@@ -27,7 +29,46 @@ If all four are YES, proceed.
 
 ---
 
+## Canonical layout — what files you'll produce
+
+Memorize this tree. Every adoption produces exactly this shape; deviating from it is a smell. Full per-file spec at [`docs/suite-layout.md`](./docs/suite-layout.md).
+
+```
+<project_root>/
+├── suites/
+│   ├── __init__.py                 ← optional (package marker)
+│   ├── _eval_agent.py              ← MANDATORY (Step 3 produces this)
+│   ├── _stubs.py                   ← MANDATORY iff side-effecting tools (Step 4)
+│   ├── <project>.py                ← MANDATORY (Step 5 produces this)
+│   └── README.md                   ← recommended
+│
+├── .agentprdiff/
+│   ├── .gitignore                  ← auto-created by `agentprdiff init` (Step 6)
+│   ├── baselines/<suite>/<case>.json   ← auto-created by `agentprdiff record` (Step 6)
+│   └── runs/                       ← auto-created, NEVER committed
+│
+└── .github/workflows/
+    └── agentprdiff.yml             ← strongly recommended (Step 7)
+```
+
+| File | Status | Created by |
+|---|---|---|
+| `suites/<project>.py` | MANDATORY | you |
+| `suites/_eval_agent.py` | MANDATORY | you |
+| `suites/_stubs.py` | MANDATORY iff side-effecting tools exist | you |
+| `suites/__init__.py` | optional | you |
+| `suites/README.md` | recommended | you |
+| `.agentprdiff/.gitignore` | MANDATORY | `agentprdiff init` |
+| `.agentprdiff/baselines/<suite>/<case>.json` | MANDATORY (one per case) | `agentprdiff record` |
+| `.agentprdiff/runs/` | auto-created | `agentprdiff check` (NEVER commit) |
+| `.github/workflows/agentprdiff.yml` | strongly recommended | you |
+
+The Steps below produce these files in order. When you finish, your final `git status` should show *only* these paths added — no production-code modifications.
+
+---
+
 ## Step 1 — discover the agent in the codebase
+*Produces: nothing on disk. Outputs a mental model you'll use in Steps 2–5.*
 
 Before writing any test code, find the production agent. Use `Grep` / ripgrep to locate:
 
@@ -50,6 +91,7 @@ Write down what you found in a comment in the suite scaffold; you'll refer back 
 ---
 
 ## Step 2 — propose cases (the contract)
+*Produces: a contract table the user reviews. No files on disk yet.*
 
 This is the most important step and the one most agents skip. **Do not start writing code yet.** Fill in the table below first.
 
@@ -76,6 +118,7 @@ Show the user the filled-in table for confirmation BEFORE writing the suite file
 ---
 
 ## Step 3 — wrap the agent (recipes)
+*Produces: `suites/_eval_agent.py` (MANDATORY).*
 
 agentprdiff needs the agent to return `(output, Trace)` instead of just `output`. Three patterns. Pick the one that matches the production agent.
 
@@ -209,6 +252,7 @@ Pick A unless the project visibly uses Anthropic-native or a custom client. A co
 ---
 
 ## Step 4 — write deterministic stubs for side-effecting tools
+*Produces: `suites/_stubs.py` (MANDATORY iff any production tool has side effects). Skip this step entirely if all tools are pure functions.*
 
 If the production tools have side effects (network, filesystem, external APIs, databases), the suite must replace them with deterministic stubs. Reasons: repeatability, no rate limits, no flakiness, no test pollution.
 
@@ -259,6 +303,7 @@ If the agent has tools that are pure functions (no side effects, no network), do
 ---
 
 ## Step 5 — write the suite file
+*Produces: `suites/<project>.py` (MANDATORY). Optionally `suites/__init__.py` (single docstring) and `suites/README.md` (recommended).*
 
 Create `suites/<project_name>.py`:
 
@@ -325,6 +370,7 @@ Rules:
 ---
 
 ## Step 6 — record baselines
+*Produces (auto): `.agentprdiff/.gitignore` and `.agentprdiff/baselines/<suite>/<case>.json` (one per case). All MANDATORY; commit them all.*
 
 ```bash
 agentprdiff init
@@ -346,6 +392,7 @@ The `runs/` directory under `.agentprdiff/` is git-ignored automatically. Only `
 ---
 
 ## Step 7 — wire CI
+*Produces: `.github/workflows/agentprdiff.yml` (strongly recommended; not strictly required).*
 
 Create `.github/workflows/agentprdiff.yml`:
 
@@ -434,7 +481,7 @@ expect=[
 
 ## Validation checklist
 
-Before declaring the work done, verify all of these:
+Before declaring the work done, verify all of these. The checklist mirrors the canonical layout in [`docs/suite-layout.md`](./docs/suite-layout.md); use that page as the spec.
 
 - [ ] `git diff <production agent paths>` returns empty. Production code is untouched.
 - [ ] `suites/_eval_agent.py` exists and uses `instrument_client` (or, for Recipe C, manual `Trace.record_*` calls).
@@ -446,6 +493,7 @@ Before declaring the work done, verify all of these:
 - [ ] `agentprdiff check suites/<project_name>.py` exits 0 immediately after `record`. (If it doesn't, either the suite is non-deterministic — broaden graders — or the agent has a real regression — flag it to the user.)
 - [ ] `.github/workflows/agentprdiff.yml` exists, references the API-key secret, and has a fallback that skips cleanly when the secret is absent.
 - [ ] You have NOT committed any baseline trace that records a real API key, customer data, or PII. Inspect at least one baseline JSON manually before committing.
+- [ ] The diff matches the shape described in `docs/suite-layout.md` — five hand-written files, no production-code changes.
 - [ ] You wrote a PR description that lists each case and what it pins. (The author of the project will eventually maintain this; making the rationale explicit helps them.)
 
 If any item fails, fix it before handing off.
