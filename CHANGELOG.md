@@ -6,6 +6,32 @@ prototyped under the name `tracediff`; renamed before first public release.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-04-26
+
+### Changed
+
+- README links to `AGENTS.md`, `docs/adapters.md`, `docs/ai-driven-adoption.md`,
+  `docs/suite-layout.md`, `docs/ci-integration.md`, `LICENSE`, and `CHANGELOG.md`
+  are now absolute GitHub URLs instead of relative paths. PyPI's project page
+  and Libraries.io render the README but cannot resolve relative repo paths;
+  the previous links rendered as broken from those surfaces. Absolute URLs
+  fix the click-through from PyPI / Libraries.io directly to the docs on
+  GitHub.
+- Status section refreshed: 0.2.x is the current alpha line; OpenAI and
+  Anthropic SDK adapters are now shipped (previously listed as 0.2 roadmap).
+  LangChain/LangGraph adapters and the JS companion package moved to the
+  0.3 roadmap.
+
+### Fixed
+
+- Wheel metadata now emits a separate `Author:` header in addition to
+  `Author-email:`. Previously, the PEP 621 `authors = [{ name = ..., email = ... }]`
+  form generated only `Author-email: "Name" <email>`, which downstream
+  parsers like pypistats.org could not read (showing "Author: None").
+  Splitting `authors` into a name-only entry plus an email-only entry,
+  and adding a parallel `maintainers` field, makes the package author
+  display correctly across PyPI, Libraries.io, and pypistats.
+
 ## [0.2.0] — 2026-04-26
 
 ### Added

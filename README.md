@@ -11,9 +11,9 @@ pip install agentprdiff
 [![CI](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
 [![Python](https://img.shields.io/pypi/pyversions/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/vnageshwaran-de/agentprdiff/blob/main/LICENSE)
 
-> **Adopting with an AI coding agent?** Point Claude Code, Cursor, Aider, or any agentic IDE at [`AGENTS.md`](./AGENTS.md) — a step-by-step adoption playbook the agent reads directly. Humans driving the adoption: see [`docs/ai-driven-adoption.md`](./docs/ai-driven-adoption.md) for copy-paste prompt templates. The canonical file layout — what's mandatory, what's recommended, what's optional — is at [`docs/suite-layout.md`](./docs/suite-layout.md).
+> **Adopting with an AI coding agent?** Point Claude Code, Cursor, Aider, or any agentic IDE at [`AGENTS.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/AGENTS.md) — a step-by-step adoption playbook the agent reads directly. Humans driving the adoption: see [`docs/ai-driven-adoption.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/ai-driven-adoption.md) for copy-paste prompt templates. The canonical file layout — what's mandatory, what's recommended, what's optional — is at [`docs/suite-layout.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/suite-layout.md).
 
 ## Why
 
@@ -113,7 +113,7 @@ def my_agent(query: str):
 
 The patch is scoped to the specific client instance and reversed when the `with` block exits — no global SDK state is touched. Anthropic adopters use `agentprdiff.adapters.anthropic` with the same shape.
 
-See [`docs/adapters.md`](./docs/adapters.md) for the full reference, including pricing overrides, custom provider tags, and recipes for nested agents.
+See [`docs/adapters.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/adapters.md) for the full reference, including pricing overrides, custom provider tags, and recipes for nested agents.
 
 ### Option B — Manual instrumentation
 
@@ -161,7 +161,7 @@ jobs:
         with: { name: agentprdiff, path: artifacts/ }
 ```
 
-See [`docs/ci-integration.md`](./docs/ci-integration.md) for GitLab, CircleCI, and Buildkite.
+See [`docs/ci-integration.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/ci-integration.md) for GitLab, CircleCI, and Buildkite.
 
 ## Quickstart
 
@@ -184,10 +184,10 @@ agentprdiff check suite.py    # exit 1; see the diff
 
 ## Status
 
-`agentprdiff` is **alpha** (0.1.0). The core model and CLI are stable; provider-specific SDK wrappers and a LangChain/LangGraph integration are on the 0.2 roadmap. See [`CHANGELOG.md`](./CHANGELOG.md).
+`agentprdiff` is **alpha** (0.2.x). The core model, CLI, and OpenAI / Anthropic SDK adapters are stable. LangChain/LangGraph adapters and a JS companion package for the Vercel AI SDK are on the 0.3 roadmap. See [`CHANGELOG.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/CHANGELOG.md).
 
 Feedback, bug reports, and PRs extremely welcome. Open an issue or @ me.
 
 ## License
 
-MIT. See [`LICENSE`](./LICENSE).
+MIT. See [`LICENSE`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/LICENSE).

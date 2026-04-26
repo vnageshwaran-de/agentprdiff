@@ -30,3 +30,4 @@ env/
 # Users SHOULD commit .agentprdiff/baselines; they should NOT commit run artifacts.
 .agentprdiff/runs/
 .agentprdiff/cache/
+.pypirc

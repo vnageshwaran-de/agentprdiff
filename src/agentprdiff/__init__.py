@@ -67,7 +67,7 @@ from .differ import AssertionChange, TraceDelta, diff_traces
 from .runner import CaseReport, Runner, RunReport
 from .store import BaselineStore
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
     # core
