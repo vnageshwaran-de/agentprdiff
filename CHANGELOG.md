@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for adopters using Claude Code / Cursor / Aider, plus a sample
   first-session transcript and tips for working with the AI agent
   through the adoption flow.
+- `docs/suite-layout.md` — canonical reference for the suite directory
+  structure. Lists each file (`suites/<project>.py`, `_eval_agent.py`,
+  `_stubs.py`, baselines, CI workflow, etc.), classifies them as
+  mandatory / recommended / optional, and specifies what each must
+  and must not contain. Cross-referenced from AGENTS.md and the
+  validation checklist.
 
 ### Changed
 
