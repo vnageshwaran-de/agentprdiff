@@ -34,6 +34,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation: `docs/adapters.md` (full reference) and
   `docs/adapters-vercel.md` (manual integration recipe for the Vercel AI
   SDK, which is JS-only and lives in a future companion package).
+- `AGENTS.md` at the repo root — an instruction set written for AI
+  coding agents (Claude Code, Cursor, Aider, etc.) that have been asked
+  to add `agentprdiff` to a codebase. Covers codebase discovery,
+  contract identification, wrap-the-agent recipes (OpenAI / Anthropic /
+  custom), stub patterns, suite scaffolding, baseline recording, CI
+  wiring, common pitfalls, and a validation checklist. Optimized for
+  AI-agent-driven adoption with copy-paste templates.
+
+### Changed
+
+- The suite loader now inserts the current working directory onto
+  `sys.path` in addition to the suite file's parent directory. Adopters
+  who run `agentprdiff record suites/foo.py` from their project root no
+  longer have to manually patch `sys.path` to import their own modules
+  (e.g. `from agent.agent import ...`, `from config import ...`).
+  Both insertions are reverted after the suite loads, so no path leakage
+  between runs.
 
 ### Notes
 

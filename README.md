@@ -13,6 +13,8 @@ pip install agentprdiff
 [![Python](https://img.shields.io/pypi/pyversions/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 
+> **Adopting with an AI coding agent?** Point Claude Code, Cursor, Aider, or any agentic IDE at [`AGENTS.md`](./AGENTS.md). It's a step-by-step adoption playbook designed to be consumed by an AI agent that's been asked *"add agentprdiff to this repo"* — including codebase discovery, contract identification, wrap-the-agent recipes, stub patterns, common pitfalls, and a validation checklist.
+
 ## Why
 
 Unit tests assume determinism. Agents aren't deterministic, but they do have *behaviors you rely on* — a specific tool gets called, a refund amount is quoted, a latency budget is respected, a safety guardrail fires. When a model or prompt changes, those behaviors drift. Today most teams find out in production.
