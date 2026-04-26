@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentprdiff"
-version = "0.1.0"
+version = "0.2.0"
 description = "Guard your LLM agents in CI. Snapshot tests that catch behavioral regressions when models, prompts, or vendors change."
 readme = "README.md"
 requires-python = ">=3.10"
