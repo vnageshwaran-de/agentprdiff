@@ -63,6 +63,7 @@ That's the whole product. Four CLI commands. One Python file. Zero framework loc
 - **Diff engine** — per-case `TraceDelta` with assertion pass/fail changes, cost delta, latency delta, tool-sequence changes, and a unified output diff.
 - **CI-ready CLI** — exit 1 on regression, `--json-out` for artifact archiving, Rich-formatted terminal output.
 - **Zero SDK lock-in** — works with OpenAI, Anthropic, Gemini, Bedrock, LangChain, LangGraph, LlamaIndex, Vercel AI SDK, custom wrappers — if you can wrap your agent in a function, `agentprdiff` can test it.
+- **One-line SDK adapters** — `with instrument_client(client) as trace:` automatically records every LLM and tool call when you're on the OpenAI Python SDK (or any OpenAI-compatible provider — Groq / Gemini / OpenRouter / Ollama / vLLM) or the Anthropic SDK. No manual `Trace` wiring required.
 
 ## How it compares
 
@@ -87,7 +88,34 @@ This is the same loop as Jest snapshot tests or VCR cassettes — applied to LLM
 
 ## Instrumenting your agent
 
-`agentprdiff` doesn't monkey-patch anything. Your agent returns `(output, Trace)`:
+You have two paths. Most agents need the first.
+
+### Option A — SDK adapters (zero manual work)
+
+If your agent uses the OpenAI Python SDK (or any OpenAI-compatible provider — Groq, Gemini, OpenRouter, Ollama, vLLM, Together, Fireworks, DeepInfra) or the Anthropic SDK, the SDK adapter captures every model and tool call automatically:
+
+```python
+from openai import OpenAI
+from agentprdiff.adapters.openai import instrument_client, instrument_tools
+
+TOOL_MAP = {"lookup_order": lookup_order, "send_email": send_email}
+
+def my_agent(query: str):
+    client = OpenAI()
+    with instrument_client(client) as trace:
+        tools = instrument_tools(TOOL_MAP, trace)
+        # ... your existing tool-calling loop, untouched ...
+        # the only swap: TOOL_MAP[fn](**args) → tools[fn](**args)
+        return final_text, trace
+```
+
+The patch is scoped to the specific client instance and reversed when the `with` block exits — no global SDK state is touched. Anthropic adopters use `agentprdiff.adapters.anthropic` with the same shape.
+
+See [`docs/adapters.md`](./docs/adapters.md) for the full reference, including pricing overrides, custom provider tags, and recipes for nested agents.
+
+### Option B — Manual instrumentation
+
+If you're not on either SDK, or you want full control, build the `Trace` yourself — `agentprdiff` doesn't require any monkey-patching:
 
 ```python
 from agentprdiff import Trace, LLMCall, ToolCall

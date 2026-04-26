@@ -30,6 +30,22 @@ Run from the shell::
     agentprdiff init
     agentprdiff record path/to/my_suite.py     # save baselines
     agentprdiff check  path/to/my_suite.py     # diff against baselines; exit 1 on regression
+
+If your agent already uses the OpenAI Python SDK (or any OpenAI-compatible
+provider — Groq, Gemini, OpenRouter, Ollama, vLLM) or the Anthropic SDK, the
+SDK adapters capture every model and tool call automatically, no manual Trace
+wiring required::
+
+    from agentprdiff.adapters.openai import instrument_client, instrument_tools
+
+    def my_agent(query):
+        client = OpenAI(...)
+        with instrument_client(client) as trace:
+            tools = instrument_tools(TOOL_MAP, trace)
+            # ... your existing tool-calling loop, untouched ...
+            return final_text, trace
+
+See ``docs/adapters.md`` for the full reference.
 """
 
 from __future__ import annotations
