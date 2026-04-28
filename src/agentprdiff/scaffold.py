@@ -638,6 +638,15 @@ jobs:
       - run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt agentprdiff
+          # Semantic-judge SDKs. The agentprdiff wheel imports these lazily,
+          # so installing only the one matching AGENTGUARD_JUDGE below keeps
+          # the CI environment lean. If your suite has no semantic() graders
+          # (see suites/README.md "Semantic Judge Keys"), drop both lines.
+          # Uncomment exactly one to match the chosen judge mode:
+          #   pip install anthropic     # if AGENTGUARD_JUDGE=anthropic
+          #   pip install openai        # if AGENTGUARD_JUDGE=openai (already installed if your agent uses OpenAI)
+          # Without the matching SDK, semantic() raises ImportError at first
+          # use and the case fails — louder than the silent fake_judge trap.
       - env:
           # TODO: match the env var your production agent reads.
           # Common names: OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_API_KEY,

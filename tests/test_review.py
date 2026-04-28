@@ -18,8 +18,8 @@ from rich.console import Console
 
 from agentprdiff import LLMCall, Trace, case, suite
 from agentprdiff.cli import main as cli_main
-from agentprdiff.graders import contains, tool_called
-from agentprdiff.reporters import ReviewReporter
+from agentprdiff.graders import contains, semantic, tool_called
+from agentprdiff.reporters import ReviewReporter, TerminalReporter
 from agentprdiff.runner import Runner
 from agentprdiff.store import BaselineStore
 
@@ -185,6 +185,116 @@ def test_review_reporter_agent_error(tmp_path):
     assert "kaboom" in out
     # No assertions defined → that branch should render its placeholder.
     assert "(no assertions defined)" in out
+
+
+# ---------------------------------------------------------------------------
+# Semantic-judge banner — visible in both reporters when (and only when)
+# the suite uses semantic() graders.
+# ---------------------------------------------------------------------------
+
+
+def _stub_judge_pass(rubric: str, trace):
+    """Always-pass judge so semantic() runs without an LLM SDK on the path."""
+    return True, "stub PASS"
+
+
+def _suite_with_semantic():
+    return suite(
+        name="toy",
+        agent=_agent_factory("refund processed"),
+        cases=[
+            case(
+                name="refund",
+                input="please refund",
+                expect=[
+                    contains("refund"),
+                    semantic("agent confirmed refund", judge=_stub_judge_pass),
+                ],
+            )
+        ],
+    )
+
+
+def _suite_without_semantic():
+    return suite(
+        name="toy",
+        agent=_agent_factory("refund processed"),
+        cases=[case(name="refund", input="please refund", expect=[contains("refund")])],
+    )
+
+
+def test_terminal_reporter_prints_judge_banner_when_semantic_used(tmp_path, monkeypatch):
+    """``check`` output names the judge mode so silent fake_judge can't hide."""
+    monkeypatch.delenv("AGENTGUARD_JUDGE", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    store = BaselineStore(root=tmp_path / ".agentprdiff")
+    runner = Runner(store)
+    s = _suite_with_semantic()
+    chk = runner.check(s)
+
+    console, buf = _captured_console()
+    TerminalReporter(console=console).render(chk)
+    out = buf.getvalue()
+
+    assert "semantic judge:" in out
+    # Default with no env vars — silent fallback warning is what we want loud.
+    assert "fake_judge" in out
+    assert "silent fallback" in out
+
+
+def test_review_reporter_prints_judge_banner_when_semantic_used(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTGUARD_JUDGE", "fake")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    store = BaselineStore(root=tmp_path / ".agentprdiff")
+    runner = Runner(store)
+    s = _suite_with_semantic()
+    chk = runner.check(s)
+
+    console, buf = _captured_console()
+    ReviewReporter(console=console).render(chk)
+    out = buf.getvalue()
+
+    assert "semantic judge:" in out
+    assert "AGENTGUARD_JUDGE=fake" in out
+
+
+def test_no_judge_banner_when_suite_has_no_semantic(tmp_path):
+    """Suites without semantic() should not be polluted with a banner."""
+    store = BaselineStore(root=tmp_path / ".agentprdiff")
+    runner = Runner(store)
+    s = _suite_without_semantic()
+    chk = runner.check(s)
+
+    console, buf = _captured_console()
+    TerminalReporter(console=console).render(chk)
+    out = buf.getvalue()
+    assert "semantic judge:" not in out
+
+    console2, buf2 = _captured_console()
+    ReviewReporter(console=console2).render(chk)
+    assert "semantic judge:" not in buf2.getvalue()
+
+
+def test_terminal_reporter_judge_banner_reflects_explicit_anthropic(tmp_path, monkeypatch):
+    monkeypatch.setenv("AGENTGUARD_JUDGE", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    store = BaselineStore(root=tmp_path / ".agentprdiff")
+    runner = Runner(store)
+    chk = runner.check(_suite_with_semantic())
+
+    console, buf = _captured_console()
+    TerminalReporter(console=console).render(chk)
+    out = buf.getvalue()
+
+    assert "semantic judge:" in out
+    assert "anthropic" in out
+    assert "fake_judge" not in out
 
 
 # ---------------------------------------------------------------------------

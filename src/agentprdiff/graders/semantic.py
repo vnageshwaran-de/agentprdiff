@@ -178,3 +178,56 @@ def _default_judge() -> Judge:
     if choice == "anthropic" or (not choice and os.environ.get("ANTHROPIC_API_KEY")):
         return anthropic_judge()
     return fake_judge
+
+
+# Default model names mirrored from `openai_judge` and `anthropic_judge`. Kept
+# in module scope so `describe_default_judge` reports the same string the
+# default judge would actually use without instantiating the judge (which
+# would import the SDK lazily).
+_DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
+_DEFAULT_ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+
+
+def describe_default_judge() -> str:
+    """Return a one-line description of the currently-selected default judge.
+
+    Mirrors the env-var precedence in :func:`_default_judge` so the string is
+    a faithful preview of what `semantic(...)` graders without an explicit
+    `judge=` argument will use at runtime. Reporters print this once per run
+    so the silent fake_judge fallback (no key set, no AGENTGUARD_JUDGE) is
+    visible at the moment a suite executes — not buried in trace JSON.
+
+    Examples:
+        - ``"fake_judge (AGENTGUARD_JUDGE=fake)"``
+        - ``"openai/gpt-4o-mini (OPENAI_API_KEY set)"``
+        - ``"anthropic/claude-haiku-4-5-20251001 (AGENTGUARD_JUDGE=anthropic)"``
+        - ``"fake_judge (no AGENTGUARD_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)"``
+    """
+    choice = (os.environ.get("AGENTGUARD_JUDGE") or "").lower()
+    if choice == "fake":
+        return "fake_judge (AGENTGUARD_JUDGE=fake)"
+    if choice == "openai":
+        return f"openai/{_DEFAULT_OPENAI_MODEL} (AGENTGUARD_JUDGE=openai)"
+    if choice == "anthropic":
+        return (
+            f"anthropic/{_DEFAULT_ANTHROPIC_MODEL} (AGENTGUARD_JUDGE=anthropic)"
+        )
+    if not choice and os.environ.get("OPENAI_API_KEY"):
+        return f"openai/{_DEFAULT_OPENAI_MODEL} (OPENAI_API_KEY set)"
+    if not choice and os.environ.get("ANTHROPIC_API_KEY"):
+        return f"anthropic/{_DEFAULT_ANTHROPIC_MODEL} (ANTHROPIC_API_KEY set)"
+    return (
+        "fake_judge (no AGENTGUARD_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY"
+        " — silent fallback)"
+    )
+
+
+def case_uses_semantic(grader_results: list[GradeResult]) -> bool:
+    """Return True if any grader in `grader_results` was a `semantic()` grader.
+
+    Detection is based on the grader name format produced by :func:`semantic`
+    (``semantic(<rubric>)``). This is stable because the public grader name is
+    part of the user-visible grading contract; reporters and serializers
+    already depend on it.
+    """
+    return any(r.grader_name.startswith("semantic(") for r in grader_results)

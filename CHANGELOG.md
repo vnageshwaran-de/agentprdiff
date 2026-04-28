@@ -8,6 +8,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Semantic-judge banner in `check` and `review` output.** `TerminalReporter`
+  and `ReviewReporter` now print one line — `semantic judge: <description>`
+  — directly under the header whenever the suite contains at least one
+  `semantic(...)` grader. The description names the active backend
+  (`fake_judge`, `openai/<model>`, or `anthropic/<model>`) and the env-var
+  signal that selected it, with explicit `silent fallback` wording when
+  no judge is configured. Closes the most common adoption trap: shipping
+  suites whose semantic coverage is decorative because no key was set
+  and the runner stayed quiet about it. Suites without `semantic(...)`
+  are unaffected — no banner is printed. New helpers
+  `agentprdiff.graders.semantic.describe_default_judge()` and
+  `case_uses_semantic()` power the rendering and are reusable by
+  third-party tooling.
+- **Scaffolded workflow YAML now flags judge-SDK installs explicitly.**
+  `_TPL_WORKFLOW` ships commented `pip install anthropic` /
+  `pip install openai` lines tied to the chosen `AGENTGUARD_JUDGE` mode,
+  with guidance that a missing SDK raises `ImportError` rather than
+  falling back silently. Pairs with the in-band judge banner for
+  end-to-end coverage of the silent-fake_judge trap.
+
+### Fixed
+
+- Adoption checklist in `AGENTS.md` now requires the adopter to verify
+  the installed CLI supports the documented commands (`agentprdiff
+  check --help`) before writing run commands into the case dossier —
+  prevents the "source docs reference `--case` but the pinned wheel
+  predates it" confusion reported during 0.2.x adoption.
+- New `Step 5b — decide and document the semantic-judge mode` mandates
+  a `## Semantic Judge Keys` section in `suites/README.md` and an
+  explicit `AGENTGUARD_JUDGE=<mode>` line in the workflow YAML, replacing
+  the implicit "first available key wins" precedence with a deliberate
+  declaration.
+
 ## [0.2.2] — 2026-04-28
 
 ### Added

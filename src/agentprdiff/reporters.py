@@ -17,6 +17,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .differ import AssertionChange, TraceDelta
+from .graders.semantic import case_uses_semantic, describe_default_judge
 from .runner import CaseReport, RunReport
 
 
@@ -35,6 +36,7 @@ class TerminalReporter:
             style="dim",
         )
         self.console.print(header)
+        _maybe_print_judge_banner(self.console, report)
 
         table = Table(show_header=True, header_style="bold", show_lines=False, expand=True)
         table.add_column("Case", style="bold")
@@ -130,6 +132,26 @@ def _format_delta(value: float, fmt: str) -> str:
     return f"[{color}]{text}[/{color}]"
 
 
+def _maybe_print_judge_banner(console: Console, report: RunReport) -> None:
+    """Print "semantic judge: <mode>" once per run if any case used semantic().
+
+    Skipped silently when no case has a semantic grader — most suites don't
+    use them and the banner would be noise. When a suite *does* have semantic
+    coverage, the banner makes the silent fake_judge fallback (no key, no
+    AGENTGUARD_JUDGE) loud at the moment of execution rather than buried in
+    trace JSON. Coloured yellow when fake_judge would run so the warning is
+    visually distinct from real-judge runs.
+    """
+    if not any(case_uses_semantic(cr.grader_results) for cr in report.case_reports):
+        return
+    description = describe_default_judge()
+    style = "yellow" if description.startswith("fake_judge") else "dim"
+    line = Text()
+    line.append("semantic judge: ", style="dim")
+    line.append(description, style=style)
+    console.print(line)
+
+
 # ---------------------------------------------------------------------------
 # ReviewReporter — verbose per-case view for `agentprdiff review`.
 # ---------------------------------------------------------------------------
@@ -175,6 +197,7 @@ class ReviewReporter:
             style="dim",
         )
         self.console.print(header)
+        _maybe_print_judge_banner(self.console, report)
         self.console.print()
 
     def _render_footer(self, report: RunReport) -> None:
