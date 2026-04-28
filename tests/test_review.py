@@ -18,11 +18,10 @@ from rich.console import Console
 
 from agentprdiff import LLMCall, Trace, case, suite
 from agentprdiff.cli import main as cli_main
-from agentprdiff.graders import contains, latency_lt_ms, tool_called
+from agentprdiff.graders import contains, tool_called
 from agentprdiff.reporters import ReviewReporter
 from agentprdiff.runner import Runner
 from agentprdiff.store import BaselineStore
-
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -18,7 +18,6 @@ import pytest
 from agentprdiff import LLMCall, Trace
 from agentprdiff.adapters.openai import instrument_client, instrument_tools
 
-
 # ───────────────────────── fake AsyncOpenAI client ─────────────────────────
 
 
@@ -200,12 +199,13 @@ def test_async_records_failed_call_when_create_raises() -> None:
     client = _FakeAsyncOpenAIClient(scripted=[err])
 
     async def _run() -> Trace:
-        with instrument_client(client) as trace:
-            with pytest.raises(RuntimeError, match="upstream 500"):
-                await client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[{"role": "user", "content": "x"}],
-                )
+        with instrument_client(client) as trace, pytest.raises(
+            RuntimeError, match="upstream 500"
+        ):
+            await client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": "x"}],
+            )
         return trace
 
     trace = asyncio.run(_run())
