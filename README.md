@@ -10,6 +10,9 @@
 pip install agentprdiff
 ```
 
+> **Don't have Python 3.10+ yet?** Step-by-step install instructions for
+> [macOS, Windows, and Linux](https://agentprdiff.dev/installation/#install-python-310-first-if-you-dont-have-it).
+>
 > **Multiple Python versions on your machine?** If `pip install` reports
 > `No matching distribution found` even after installing Python 3.10+,
 > use `python3.12 -m pip install agentprdiff` (substitute your installed

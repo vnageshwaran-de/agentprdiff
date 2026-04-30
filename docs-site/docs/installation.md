@@ -22,6 +22,117 @@ sidebar_position: 2
 The package itself depends on `click`, `rich`, `pydantic` (v2), and
 `pyyaml` — all pure-Python.
 
+## Install Python 3.10+ first (if you don't have it)
+
+Check what you've got:
+
+```bash
+python --version
+python3 --version
+python3.12 --version    # works only if 3.12 specifically is installed
+```
+
+If none of those print **3.10 or higher**, install one of the supported
+versions below.
+
+### macOS
+
+**Homebrew (recommended):**
+
+```bash
+# Install Homebrew if you don't have it (one-time, ~3 min)
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# Install Python 3.12
+brew install python@3.12
+
+# Verify
+python3.12 --version
+# Python 3.12.x
+```
+
+After install, the binary is at `/opt/homebrew/bin/python3.12` (Apple
+Silicon) or `/usr/local/bin/python3.12` (Intel). Both are normally on
+`$PATH` already; if not, add to your `~/.zshrc`:
+
+```bash
+echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.zshrc   # Apple Silicon
+echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc      # Intel
+source ~/.zshrc
+```
+
+**python.org installer (alternative):**
+
+If you'd rather not use Homebrew, download the Mac installer from
+[python.org/downloads/macos](https://www.python.org/downloads/macos/),
+double-click the `.pkg`, run through the prompts. Adds `python3.12` to
+`/Library/Frameworks/Python.framework/Versions/3.12/bin/` — same `-m pip`
+pattern as Homebrew.
+
+### Windows
+
+**python.org installer (recommended):**
+
+1. Download from [python.org/downloads/windows](https://www.python.org/downloads/windows/)
+   — pick "Windows installer (64-bit)" for Python 3.12.
+2. Run the `.exe`. **Important:** check **"Add python.exe to PATH"** at
+   the bottom of the first installer screen. Without that box ticked,
+   `python` won't be findable from PowerShell or Command Prompt.
+3. Click "Install Now."
+4. Verify in a fresh terminal:
+
+   ```powershell
+   python --version
+   # Python 3.12.x
+   python -m pip --version
+   ```
+
+**winget (alternative, scriptable):**
+
+```powershell
+winget install --id Python.Python.3.12 --source winget
+```
+
+**Microsoft Store (alternative, sandboxed):**
+
+Search "Python 3.12" in the Microsoft Store and click Install. Note: the
+Store version installs into a sandboxed location and *can't* write
+outside the user profile, which sometimes confuses tools that expect
+filesystem access. The python.org installer is more flexible.
+
+### Linux (briefly)
+
+**Ubuntu / Debian:**
+
+```bash
+sudo apt update
+sudo apt install software-properties-common
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt install python3.12 python3.12-venv python3.12-pip
+python3.12 --version
+```
+
+**Fedora / RHEL:**
+
+```bash
+sudo dnf install python3.12 python3.12-pip
+python3.12 --version
+```
+
+**Cross-platform: pyenv** (manages multiple Python versions cleanly,
+works on macOS and Linux):
+
+```bash
+curl https://pyenv.run | bash
+# Add the suggested lines to ~/.zshrc or ~/.bashrc, then:
+pyenv install 3.12
+pyenv global 3.12
+python --version
+# Python 3.12.x
+```
+
+Once Python 3.10+ is installed, continue to the install step below.
+
 ## Install from PyPI
 
 ```bash
