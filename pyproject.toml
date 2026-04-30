@@ -52,10 +52,11 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/vnageshwaran-de/agentprdiff"
-Documentation = "https://github.com/vnageshwaran-de/agentprdiff#readme"
-Issues = "https://github.com/vnageshwaran-de/agentprdiff/issues"
+Homepage = "https://agentprdiff.dev"
+Documentation = "https://agentprdiff.dev"
 Repository = "https://github.com/vnageshwaran-de/agentprdiff"
+Issues = "https://github.com/vnageshwaran-de/agentprdiff/issues"
+Changelog = "https://github.com/vnageshwaran-de/agentprdiff/blob/main/CHANGELOG.md"
 
 [project.scripts]
 agentprdiff = "agentprdiff.cli:main"

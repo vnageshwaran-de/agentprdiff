@@ -2,6 +2,8 @@
 
 **Guard your LLM agents in CI.** Snapshot tests that catch behavioral regressions when models, prompts, or vendors change.
 
+📚 **[Documentation: agentprdiff.dev](https://agentprdiff.dev/)** &nbsp;·&nbsp; ⚡ [Quickstart](https://agentprdiff.dev/quickstart/) &nbsp;·&nbsp; 🤖 [AI-agent adoption](https://agentprdiff.dev/quickstart/#path-a--let-an-ai-agent-adopt-the-package-for-you-recommended) &nbsp;·&nbsp; 📦 [PyPI](https://pypi.org/project/agentprdiff/)
+
 > You upgraded Claude. You tweaked a system prompt. You swapped `gpt-4o` for `gpt-4o-mini` in the cheap path. Which of your agent's behaviors just changed? `agentprdiff` tells you — before the PR merges.
 
 ```bash
@@ -11,7 +13,10 @@ pip install agentprdiff
 [![CI](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
 [![Python](https://img.shields.io/pypi/pyversions/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
+[![Downloads](https://static.pepy.tech/badge/agentprdiff)](https://pepy.tech/project/agentprdiff)
+[![Downloads/month](https://static.pepy.tech/badge/agentprdiff/month)](https://pepy.tech/project/agentprdiff)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/vnageshwaran-de/agentprdiff/blob/main/LICENSE)
+[![Docs](https://img.shields.io/badge/docs-agentprdiff.dev-blue)](https://agentprdiff.dev/)
 
 > **Adopting with an AI coding agent?** Point Claude Code, Cursor, Aider, or any agentic IDE at [`AGENTS.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/AGENTS.md) — a step-by-step adoption playbook the agent reads directly. Humans driving the adoption: see [`docs/ai-driven-adoption.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/ai-driven-adoption.md) for copy-paste prompt templates. The canonical file layout — what's mandatory, what's recommended, what's optional — is at [`docs/suite-layout.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/suite-layout.md).
 

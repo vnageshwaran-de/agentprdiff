@@ -7,6 +7,13 @@ sidebar_position: 1
 
 # Overview
 
+[![PyPI](https://img.shields.io/pypi/v/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
+[![Python](https://img.shields.io/pypi/pyversions/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
+[![Downloads](https://static.pepy.tech/badge/agentprdiff)](https://pepy.tech/project/agentprdiff)
+[![Downloads/month](https://static.pepy.tech/badge/agentprdiff/month)](https://pepy.tech/project/agentprdiff)
+[![CI](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/vnageshwaran-de/agentprdiff/blob/main/LICENSE)
+
 `agentprdiff` is a Python library and CLI for **snapshot testing of LLM
 agents**. It records what your agent did on a known-good run, commits that
 record to git, and on every subsequent run computes a structured *trace
