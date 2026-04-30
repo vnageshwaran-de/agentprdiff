@@ -10,6 +10,12 @@
 pip install agentprdiff
 ```
 
+> **Multiple Python versions on your machine?** If `pip install` reports
+> `No matching distribution found` even after installing Python 3.10+,
+> use `python3.12 -m pip install agentprdiff` (substitute your installed
+> 3.10+ binary). Sidesteps `$PATH` confusion when Homebrew's Python and
+> the system Python coexist. Full troubleshooting: [Installation guide](https://agentprdiff.dev/installation/).
+
 [![CI](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml/badge.svg)](https://github.com/vnageshwaran-de/agentprdiff/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)
 [![Python](https://img.shields.io/pypi/pyversions/agentprdiff.svg)](https://pypi.org/project/agentprdiff/)

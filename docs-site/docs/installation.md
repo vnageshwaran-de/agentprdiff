@@ -32,8 +32,36 @@ Verify:
 
 ```bash
 agentprdiff --version
-# agentprdiff, version 0.2.3
+# agentprdiff, version 0.2.4
 ```
+
+!!! tip "Multiple Python versions on macOS / Linux?"
+
+    If `pip install agentprdiff` reports `Could not find a version that
+    satisfies the requirement` or `No matching distribution found` even
+    after installing Python 3.10+, your shell's `pip` is likely still
+    wired to an older Python. Use the `-m pip` form to invoke pip
+    *through* a specific Python binary:
+
+    ```bash
+    python3.12 -m pip install --upgrade pip
+    python3.12 -m pip install agentprdiff
+    python3.12 -c "import agentprdiff; print(agentprdiff.__version__)"
+    ```
+
+    Substitute whichever Python ≥ 3.10 you have installed (e.g.
+    `python3.11`, `python3.13`). The `-m pip` form sidesteps `$PATH`
+    confusion when multiple Pythons coexist — common on macOS where
+    Homebrew installs `python3.12` alongside the system's `python3.9`.
+
+    For a permanent fix, create a virtualenv and install into it once:
+
+    ```bash
+    python3.12 -m venv ~/.venvs/agentprdiff
+    source ~/.venvs/agentprdiff/bin/activate
+    pip install agentprdiff
+    agentprdiff --version    # works without typing python3.12 every time
+    ```
 
 ### Optional extras
 
