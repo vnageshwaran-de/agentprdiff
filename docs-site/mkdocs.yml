@@ -1,0 +1,132 @@
+site_name: agentprdiff
+site_description: Snapshot tests that catch behavioral regressions in your LLM agents — before the PR merges.
+site_url: https://agentprdiff.dev/
+site_author: Vinoth Nageshwaran
+repo_url: https://github.com/vnageshwaran-de/agentprdiff
+repo_name: vnageshwaran-de/agentprdiff
+edit_uri: edit/main/docs-site/docs/
+copyright: Copyright &copy; 2026 Vinoth Nageshwaran — MIT License
+
+# Files live under docs-site/docs/. Adjust if your site lives elsewhere.
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - toc.follow
+    - toc.integrate
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.tooltips
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vnageshwaran-de/agentprdiff
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/agentprdiff/
+  # Re-enable once `mike` is installed and you have multiple versions to surface:
+  # version:
+  #   provider: mike
+  #   default: latest
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      title: On this page
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+
+plugins:
+  - search
+  - tags
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Quickstart: quickstart.md
+  - Core Concepts: concepts.md
+  - Usage Guide:
+      - Basic Usage: usage/basic.md
+      - Advanced Usage: usage/advanced.md
+      - Configuration: usage/configuration.md
+      - Customization: usage/customization.md
+  - Scenarios:
+      - Overview: scenarios/index.md
+      - A Simple Suite: scenarios/simple-suite.md
+      - Large Suites & Multi-File: scenarios/large-suites.md
+      - Edge Cases: scenarios/edge-cases.md
+      - CI/CD Integration: scenarios/ci-cd.md
+      - OpenAI / Anthropic Adapters: scenarios/openai-adapter.md
+      - Performance & Cost: scenarios/performance.md
+      - Debugging Workflow: scenarios/debugging.md
+      - Failure Handling: scenarios/failure-handling.md
+  - Reference:
+      - Python API: api/python.md
+      - CLI: api/cli.md
+      - Graders: api/graders.md
+      - SDK Adapters: api/adapters.md
+  - Architecture: architecture.md
+  - Best Practices: best-practices.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Contributing: contributing.md
+  - Roadmap: roadmap.md
