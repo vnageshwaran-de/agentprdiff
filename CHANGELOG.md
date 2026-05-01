@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-04-30
+
+Infrastructure-only release. Code is identical to 0.2.4 — this exists
+solely to publish via PyPI's Trusted Publishing flow (OIDC from GitHub
+Actions) so the project page shows verified details for the source
+repository. No API token is used to upload this release.
+
+### Internal
+
+- Added `.github/workflows/release.yml` that builds sdist + wheel and
+  publishes via `pypa/gh-action-pypi-publish` with OIDC. Triggered on
+  GitHub `release: published` and `workflow_dispatch`. Uses the `pypi`
+  GitHub environment for tag-restricted deploys (`v*`).
+- First release published through the configured PyPI Trusted Publisher
+  for `vnageshwaran-de/agentprdiff` → `release.yml` → `pypi` env.
+
 ## [0.2.4] — 2026-04-29
 
 Metadata-only release. Code is identical to 0.2.3 — this exists solely
