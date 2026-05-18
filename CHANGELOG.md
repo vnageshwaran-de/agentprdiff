@@ -8,6 +8,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-05-17
+
+Adds a model-override hook on the adapters package. This unblocks
+tooling that wants to run a single suite against multiple models — e.g.
+the Studio's multi-model benchmark — without forcing user-written agent
+code to take a `model` parameter.
+
+The change is purely additive: no existing call site has to change, and
+the 155-test suite passes unchanged. The override is module-level and
+process-wide, read at call time inside the patched `create()` function.
+
+### Added
+
+- `agentprdiff.adapters.set_default_model(model: str | None) -> None`:
+  set a process-wide override that rewrites `kwargs["model"]` on every
+  subsequent `instrument_client`-patched `create()` call. Pass `None` to
+  clear.
+- `agentprdiff.adapters.get_default_model() -> str | None`: read the
+  current override.
+- The OpenAI adapter's sync + async patched-create paths and the
+  Anthropic adapter's patched-create now consult the override at call
+  time and rewrite kwargs before delegating to the SDK. No-op when no
+  override is active.
+
+### Notes
+
+- The override is process-wide. Sequencing `set_default_model("A"); run();
+  set_default_model("B"); run(); set_default_model(None)` works as
+  expected. Concurrent runs in the same process share the override —
+  isolate per-leg benchmarks in fresh subprocesses if you need
+  concurrency.
+- Only rewrites when the caller actually passed a `model=` kwarg, so the
+  SDK's "no model provided" error path still surfaces correctly.
+- The override is exported from `agentprdiff.adapters` so callers don't
+  need to reach into submodules.
+
 ## [0.2.5] — 2026-04-30
 
 Infrastructure-only release. Code is identical to 0.2.4 — this exists
