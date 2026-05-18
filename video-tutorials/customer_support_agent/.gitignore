@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# agentprdiff run output (not committed; only baselines/ is)
+.agentprdiff/runs/
+
+# CI JSON reports written by --json-out
+artifacts/

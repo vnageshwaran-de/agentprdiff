@@ -1,0 +1,26 @@
+{
+  "case_name": "status_then_policy_no_refund",
+  "suite_name": "multi_step_reasoning",
+  "input": "My shoes in order 5678 don't fit. Can I return them? What do I need to do?",
+  "output": "Yes, you can return your shoes within 30 days with a receipt. To initiate the return, please ensure you have your order details handy. You can visit our returns center on the website or bring them to any ShopFast store.",
+  "llm_calls": [],
+  "tool_calls": [
+    {
+      "name": "check_policy",
+      "arguments": {
+        "category": "shoes"
+      },
+      "result": "{\"category\": \"shoes\", \"policy\": \"Most items can be returned within 30 days with a receipt. Final sale items are non-refundable.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 2864.9604579841252,
+  "total_prompt_tokens": 0,
+  "total_completion_tokens": 0,
+  "error": null,
+  "metadata": {},
+  "run_id": "a7fd718a1c3c",
+  "created_at": "2026-05-05T03:37:39+00:00"
+}

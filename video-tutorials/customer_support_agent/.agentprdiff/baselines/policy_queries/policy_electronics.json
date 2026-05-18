@@ -1,0 +1,26 @@
+{
+  "case_name": "policy_electronics",
+  "suite_name": "policy_queries",
+  "input": "What is your return policy for electronics?",
+  "output": "Our return policy for electronics states that they can be returned within 30 days if unopened. If the item has been opened, it is only eligible for an exchange.",
+  "llm_calls": [],
+  "tool_calls": [
+    {
+      "name": "check_policy",
+      "arguments": {
+        "category": "electronics"
+      },
+      "result": "{\"category\": \"electronics\", \"policy\": \"Electronics can be returned within 30 days if unopened. Opened items are eligible for exchange only.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 1824.1445840103552,
+  "total_prompt_tokens": 0,
+  "total_completion_tokens": 0,
+  "error": null,
+  "metadata": {},
+  "run_id": "a1ce77a4c6d0",
+  "created_at": "2026-05-05T03:37:19+00:00"
+}

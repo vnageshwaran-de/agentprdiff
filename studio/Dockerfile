@@ -50,7 +50,7 @@ COPY --from=frontend /work/dist /opt/studio/frontend
 # Default runtime configuration. Override any of these via `-e` at run-time.
 ENV STUDIO_DATA_DIR=/data \
     STUDIO_FRONTEND_DIR=/opt/studio/frontend \
-    STUDIO_ENGINE_REQ="agentprdiff>=0.2.5" \
+    STUDIO_ENGINE_REQ="agentprdiff>=0.3.1" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1

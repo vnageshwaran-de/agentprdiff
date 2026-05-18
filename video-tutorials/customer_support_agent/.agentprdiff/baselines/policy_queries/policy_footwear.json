@@ -1,0 +1,26 @@
+{
+  "case_name": "policy_footwear",
+  "suite_name": "policy_queries",
+  "input": "How long do I have to return shoes?",
+  "output": "You have 30 days to return shoes with a receipt, as long as they are not final sale items.",
+  "llm_calls": [],
+  "tool_calls": [
+    {
+      "name": "check_policy",
+      "arguments": {
+        "category": "shoes"
+      },
+      "result": "{\"category\": \"shoes\", \"policy\": \"Most items can be returned within 30 days with a receipt. Final sale items are non-refundable.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 1945.8601249789353,
+  "total_prompt_tokens": 0,
+  "total_completion_tokens": 0,
+  "error": null,
+  "metadata": {},
+  "run_id": "da1bb5cfb7d6",
+  "created_at": "2026-05-05T03:37:21+00:00"
+}

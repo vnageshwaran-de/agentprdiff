@@ -1,0 +1,26 @@
+{
+  "case_name": "refund_order_not_found",
+  "suite_name": "refund_flow",
+  "input": "Please refund my order 9999.",
+  "output": "I'm sorry, but I can't find an order with the ID 9999. Could you please double-check the order number?",
+  "llm_calls": [],
+  "tool_calls": [
+    {
+      "name": "lookup_order",
+      "arguments": {
+        "order_id": "9999"
+      },
+      "result": "{\"error\": \"Order 9999 not found.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 2087.1375830029137,
+  "total_prompt_tokens": 0,
+  "total_completion_tokens": 0,
+  "error": null,
+  "metadata": {},
+  "run_id": "6d66e39566ab",
+  "created_at": "2026-05-05T03:37:14+00:00"
+}

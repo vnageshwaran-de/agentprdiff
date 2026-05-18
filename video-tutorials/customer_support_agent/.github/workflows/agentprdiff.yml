@@ -1,0 +1,59 @@
+name: agentprdiff — behavioral regression check
+
+on:
+  pull_request:
+    paths:
+      - "video-tutorials/customer_support_agent/agent.py"
+      - "video-tutorials/customer_support_agent/suites/**"
+      - "video-tutorials/customer_support_agent/requirements.txt"
+      - "video-tutorials/customer_support_agent/.github/workflows/agentprdiff.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  regression-check:
+    name: Check agent behavior against baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: video-tutorials/customer_support_agent
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run agentprdiff check
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_MODEL: gemini-2.5-flash
+          LIVE_TOOLS: "false"
+          # Semantic judge mode: fake_judge (free, keyword matching).
+          # To enable a real LLM judge, add AGENTGUARD_JUDGE and the
+          # corresponding API key secret. See suites/README.md.
+          AGENTGUARD_JUDGE: fake
+        run: |
+          if [ -z "${GOOGLE_API_KEY}" ]; then
+            echo "::warning::GOOGLE_API_KEY secret not set — skipping agentprdiff check."
+            exit 0
+          fi
+          agentprdiff check suites/customer_support.py --json-out artifacts/agentprdiff.json
+
+      - name: Upload trace artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agentprdiff-trace
+          path: video-tutorials/customer_support_agent/artifacts/
+          retention-days: 7

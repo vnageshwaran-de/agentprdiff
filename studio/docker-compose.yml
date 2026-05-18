@@ -39,7 +39,10 @@ services:
       STUDIO_DATA_DIR: /data
       STUDIO_FRONTEND_DIR: /opt/studio/frontend
       # Engine req: pin a published version or point at an editable clone.
-      STUDIO_ENGINE_REQ: agentprdiff>=0.2.5
+      # Bumped from 0.2.5 → 0.3.1: the engine adds set_default_model() to
+      # agentprdiff.adapters, which the Studio's ModelBenchmark runner-shim
+      # requires for multi-model comparisons.
+      STUDIO_ENGINE_REQ: agentprdiff>=0.3.1
       # Postgres profile rewires the DB URL via the `db` dependency below.
       STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL:-}
 

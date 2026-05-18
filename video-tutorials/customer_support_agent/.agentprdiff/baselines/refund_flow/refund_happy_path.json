@@ -1,0 +1,36 @@
+{
+  "case_name": "refund_happy_path",
+  "suite_name": "refund_flow",
+  "input": "I want a refund for order 1234. The headphones stopped working after one day.",
+  "output": "I'm so sorry to hear your headphones stopped working. I've successfully processed a refund for your order 1234 for $79.99. You should see the refund reflected in your account within 3\u20135 business days.",
+  "llm_calls": [],
+  "tool_calls": [
+    {
+      "name": "lookup_order",
+      "arguments": {
+        "order_id": "1234"
+      },
+      "result": "{\"order_id\": \"1234\", \"status\": \"delivered\", \"item\": \"Wireless Headphones\", \"category\": \"electronics\", \"amount\": 79.99}",
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "name": "process_refund",
+      "arguments": {
+        "order_id": "1234",
+        "reason": "Headphones stopped working after one day."
+      },
+      "result": "{\"refund_id\": \"REF-1234-001\", \"order_id\": \"1234\", \"amount\": 79.99, \"status\": \"approved\", \"message\": \"Refund of $79.99 approved. You will see it in 3\\u20135 business days.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 3747.265584010165,
+  "total_prompt_tokens": 0,
+  "total_completion_tokens": 0,
+  "error": null,
+  "metadata": {},
+  "run_id": "325f7c44e655",
+  "created_at": "2026-05-05T03:38:25+00:00"
+}

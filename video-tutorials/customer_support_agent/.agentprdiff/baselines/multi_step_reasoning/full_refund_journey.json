@@ -1,0 +1,45 @@
+{
+  "case_name": "full_refund_journey",
+  "suite_name": "multi_step_reasoning",
+  "input": "I received order 1234 but the headphones are defective. Can I get a refund? What's the policy?",
+  "output": "I'm sorry to hear that your wireless headphones from order 1234 are defective. I've processed a refund for $79.99 to your original payment method. You should see it reflected in your account within 3-5 business days.\n\nOur policy states that most items can be returned within 30 days with a receipt.",
+  "llm_calls": [],
+  "tool_calls": [
+    {
+      "name": "lookup_order",
+      "arguments": {
+        "order_id": "1234"
+      },
+      "result": "{\"order_id\": \"1234\", \"status\": \"delivered\", \"item\": \"Wireless Headphones\", \"category\": \"electronics\", \"amount\": 79.99}",
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "name": "check_policy",
+      "arguments": {
+        "category": "headphones"
+      },
+      "result": "{\"category\": \"headphones\", \"policy\": \"Most items can be returned within 30 days with a receipt. Final sale items are non-refundable.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    },
+    {
+      "name": "process_refund",
+      "arguments": {
+        "order_id": "1234",
+        "reason": "Defective headphones"
+      },
+      "result": "{\"refund_id\": \"REF-1234-001\", \"order_id\": \"1234\", \"amount\": 79.99, \"status\": \"approved\", \"message\": \"Refund of $79.99 approved. You will see it in 3\\u20135 business days.\"}",
+      "latency_ms": 0.0,
+      "error": null
+    }
+  ],
+  "total_cost_usd": 0.0,
+  "total_latency_ms": 7777.973791002296,
+  "total_prompt_tokens": 0,
+  "total_completion_tokens": 0,
+  "error": null,
+  "metadata": {},
+  "run_id": "8a1c1a59b8c0",
+  "created_at": "2026-05-05T03:37:31+00:00"
+}
