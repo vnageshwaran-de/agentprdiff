@@ -311,6 +311,30 @@ def _record_failure(
     )
 
 
+def _apply_model_override(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """If a global model override is set, return a new kwargs dict with
+    ``model`` rewritten. Returns the original dict when no override is active.
+
+    The lookup happens at call time so multi-leg benchmarks can flip the
+    override between runs in the same process.
+    """
+    # Import at call time to avoid an import cycle (adapters/__init__.py
+    # itself imports from .pricing, which is fine; this module imports from
+    # adapters at package level but we want the *live* value).
+    from . import get_default_model
+
+    override = get_default_model()
+    if override is None:
+        return kwargs
+    # Only rewrite if the caller actually passed a model — preserves the
+    # SDK's own error path when model is missing.
+    if "model" not in kwargs:
+        return kwargs
+    new_kwargs = dict(kwargs)
+    new_kwargs["model"] = override
+    return new_kwargs
+
+
 def _make_sync_patched_create(
     original_create: Callable[..., Any],
     *,
@@ -319,6 +343,7 @@ def _make_sync_patched_create(
     prices: PriceTable | None,
 ) -> Callable[..., Any]:
     def patched_create(*args: Any, **kwargs: Any) -> Any:
+        kwargs = _apply_model_override(kwargs)
         start = time.perf_counter()
         try:
             response = original_create(*args, **kwargs)
@@ -350,6 +375,7 @@ def _make_async_patched_create(
     prices: PriceTable | None,
 ) -> Callable[..., Awaitable[Any]]:
     async def patched_create(*args: Any, **kwargs: Any) -> Any:
+        kwargs = _apply_model_override(kwargs)
         start = time.perf_counter()
         try:
             response = await original_create(*args, **kwargs)

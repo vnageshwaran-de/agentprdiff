@@ -106,6 +106,15 @@ def instrument_client(
     instance_attr_value = vars(messages_attr).get("create")
 
     def patched_create(*args: Any, **kwargs: Any) -> Any:
+        # Honor the global model override if set — same contract as the
+        # OpenAI adapter. Lookup happens at call time so the value reflects
+        # whatever set_default_model() last set.
+        from . import get_default_model
+
+        override = get_default_model()
+        if override is not None and "model" in kwargs:
+            kwargs = dict(kwargs)
+            kwargs["model"] = override
         start = time.perf_counter()
         try:
             response = original_create(*args, **kwargs)

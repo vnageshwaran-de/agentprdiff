@@ -35,9 +35,52 @@ from .pricing import (
     register_prices,
 )
 
+# ---------------------------------------------------------------------------
+# Optional global model override.
+#
+# When set via ``set_default_model("gpt-4o-mini")``, every subsequent
+# ``instrument_client``-patched ``create()`` call rewrites the ``model``
+# keyword argument before delegating to the underlying SDK. Pass ``None``
+# to clear.
+#
+# Module-level + process-wide on purpose — this is a knob for tooling
+# (Studio's multi-model benchmark, or anyone doing batch comparisons
+# from a notebook), not for production agent code. Production agents
+# should keep passing ``model=`` explicitly.
+#
+# Reads happen at call time (the patched_create looks up the current
+# value each invocation), so a single-threaded sequence of:
+#
+#     set_default_model("gpt-4o-mini"); run_suite(); \
+#     set_default_model("claude-haiku-4-5"); run_suite(); \
+#     set_default_model(None)
+#
+# does exactly what you'd expect. Concurrent runs in the same process
+# share the override — if you need per-task isolation, run each in a
+# fresh subprocess.
+
+_DEFAULT_MODEL_OVERRIDE: str | None = None
+
+
+def set_default_model(model: str | None) -> None:
+    """Override the model on every subsequent patched ``create()`` call.
+
+    Pass ``None`` to clear. See module docstring for the semantics.
+    """
+    global _DEFAULT_MODEL_OVERRIDE
+    _DEFAULT_MODEL_OVERRIDE = model
+
+
+def get_default_model() -> str | None:
+    """Read the current model override (``None`` if not set)."""
+    return _DEFAULT_MODEL_OVERRIDE
+
+
 __all__ = [
     "DEFAULT_PRICES",
     "PriceTable",
     "estimate_cost_usd",
     "register_prices",
+    "set_default_model",
+    "get_default_model",
 ]
