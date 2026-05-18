@@ -16,18 +16,31 @@ Two checks beyond a syntax pass:
 
 Also exposes a small workspace probe — :func:`guess_agent_import` — that
 the generate endpoint uses to pre-fill the LLM's ``agent_import_target``
-instead of blindly defaulting to ``"agent"``.
+instead of blindly defaulting to ``"agent"``. The probe defers to
+:mod:`.import_sanitizer` for path-to-dotted-module conversion so
+hyphenated directory names never produce invalid Python identifiers.
 """
 
 from __future__ import annotations
 
 import ast
+import logging
 import re
 import sys
 import tempfile
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
+
+from .import_sanitizer import (
+    GenerationTarget,
+    classify_target,
+    is_within,
+    path_to_module,
+    validate_generated_imports,
+)
+
+log = logging.getLogger(__name__)
 
 _IMPORT_HINTS = ("from agentprdiff", "import agentprdiff")
 _SUITE_HINT = re.compile(r"\bsuite\s*\(", re.MULTILINE)
@@ -94,6 +107,12 @@ class ValidationResult:
     load_error: str | None
     discovered_suites: list[str]
     total_cases: int
+    # Structured preflight diagnostics — populated when ``ast.parse``
+    # fails OR when generated imports use non-identifier path segments.
+    # Each entry is {line, col, cause, message, statement}; cause is one
+    # of ``"syntax_error"`` / ``"invalid_module_path"``. Empty list when
+    # the suite passes preflight.
+    import_diagnostics: list[dict] | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -107,6 +126,7 @@ class ValidationResult:
             "load_error": self.load_error,
             "discovered_suites": self.discovered_suites,
             "total_cases": self.total_cases,
+            "import_diagnostics": self.import_diagnostics or [],
         }
 
 
@@ -119,6 +139,21 @@ def validate(content: str, workspace: Path | None) -> ValidationResult:
         missing_module=None, load_error=None,
         discovered_suites=[], total_cases=0,
     )
+
+    # Preflight pass: surface every syntax error and every invalid dotted
+    # import as structured diagnostics. The UI uses these to render line +
+    # column + remediation hint instead of just "parse failed".
+    diagnostics = validate_generated_imports(content)
+    if diagnostics:
+        out.import_diagnostics = [d.to_dict() for d in diagnostics]
+        # If any diagnostic is a syntax error, we can't ast.parse — bail
+        # before the heuristic and load checks.
+        if any(d.cause == "syntax_error" for d in diagnostics):
+            first = diagnostics[0]
+            out.parse_error = (
+                f"line {first.line}: {first.message}"
+            )
+            return out
 
     try:
         ast.parse(content)
@@ -193,10 +228,8 @@ def validate(content: str, workspace: Path | None) -> ValidationResult:
     except Exception as exc:  # noqa: BLE001 — capture anything
         out.load_error = f"{type(exc).__name__}: {exc}"
     finally:
-        try:
+        with suppress(OSError):
             tmp_path.unlink()
-        except OSError:
-            pass
 
     return out
 
@@ -280,9 +313,7 @@ def _likely_project_dep(module_name: str, workspace: Path) -> bool:
     # User-local module: ``<workspace>/<top>.py`` or ``<workspace>/<top>/__init__.py``.
     if (workspace / f"{top}.py").is_file():
         return True
-    if (workspace / top / "__init__.py").is_file():
-        return True
-    return False
+    return (workspace / top / "__init__.py").is_file()
 
 
 @contextmanager
@@ -295,10 +326,8 @@ def _workspace_on_path(workspace: Path):
         yield
     finally:
         if inserted:
-            try:
+            with suppress(ValueError):
                 sys.path.remove(entry)
-            except ValueError:
-                pass
 
 
 # ---------------------------------------------------------------------------
@@ -321,51 +350,73 @@ def guess_agent_module_and_callable(
 ) -> tuple[str, str] | None:
     """Return ``(module, callable)`` for the project's likely agent.
 
-    Module-resolution: same priority as the original guess. Inside the
-    chosen module, we scan top-level names and pick the most likely
-    callable, with this fallback chain:
-
-    1. ``run`` — the canonical entrypoint name agentprdiff's docs use.
-    2. ``agent`` — common alternative.
-    3. ``main`` — sometimes used.
-    4. The single ``class`` or ``def`` in the module, if there's exactly one.
-    5. The first top-level public name.
-    6. If the chosen module is an ``__init__.py`` with nothing useful,
-       look in sibling modules of the package and pick the best one
-       there — return ``(package.submodule, callable)``.
-
-    If no callable can be identified at all, fall back to ``"run"`` —
-    the LLM gets the canonical name; if it doesn't match, the load check
-    surfaces a useful error pointing the user at the right name.
+    Back-compat shape — returns ``None`` for projects whose paths can't
+    be expressed as a dotted import OR have no agent at all. Most new
+    callers want :func:`guess_agent_target` instead, which distinguishes
+    those two cases and exposes the recommended generation strategy.
     """
-    module = _pick_module(workspace)
-    if module is None:
+    target = guess_agent_target(workspace)
+    if target is None or target.strategy != "direct":
         return None
-    module_path = _module_path_to_file(workspace, module)
-    if module_path is None:
-        return (module, "run")
+    assert target.module is not None  # narrow for the type checker
+    return (target.module, target.callable_name)
 
-    callable_name = _pick_callable(module_path)
-    if callable_name:
-        return (module, callable_name)
 
-    # __init__.py was empty — descend into siblings. Skip private modules
-    # (``_internal.py``, ``_utils.py``) and prefer modules with canonical
-    # entrypoint names where possible.
-    if module_path.name == "__init__.py":
-        pkg_dir = module_path.parent
+def guess_agent_target(workspace: Path) -> GenerationTarget | None:
+    """Find the project's likely agent and decide how to reference it.
+
+    Returns a :class:`~.import_sanitizer.GenerationTarget` whose
+    ``strategy`` field directs the suite-generation prompt:
+
+    * ``"direct"``       — emit ``from {module} import {callable}``
+    * ``"dynamic_load"`` — emit ``importlib.util.spec_from_file_location(...)``
+                            because the file path has hyphens / dots / leading
+                            digits and can't be expressed as a dotted import
+    * ``"scaffold"``     — no agent module found at all; the prompt should
+                            generate a stub with ``TODO`` markers
+
+    Returns ``None`` *only* when no candidate file was found anywhere in
+    the workspace; the "found but path is unsafe" case becomes a
+    ``dynamic_load`` target.
+    """
+    file_path = _pick_module_file(workspace)
+    if file_path is None:
+        log.info("guess_agent_target: no candidate file found under %s", workspace)
+        return None
+
+    callable_name = _pick_callable(file_path) or "run"
+
+    # If file_path is an __init__.py and that __init__ has nothing useful,
+    # descend into siblings and prefer one with canonical names. We do the
+    # descent before classifying so the GenerationTarget references the
+    # real submodule, not an empty __init__.
+    if (
+        file_path.name == "__init__.py"
+        and not _pick_callable(file_path)
+    ):
+        pkg_dir = file_path.parent
         siblings = [
             s for s in sorted(pkg_dir.glob("*.py"))
             if s.name != "__init__.py" and not s.name.startswith("_")
         ]
-        # Prefer canonical filenames (``main.py`` / ``agent.py`` / ``run.py``).
         ranked = sorted(siblings, key=lambda p: 0 if p.stem in ("main", "agent", "run") else 1)
         for sibling in ranked:
             sib_callable = _pick_callable(sibling)
             if sib_callable:
-                return (f"{module}.{sibling.stem}", sib_callable)
+                file_path = sibling
+                callable_name = sib_callable
+                break
 
-    return (module, "run")
+    target = classify_target(file_path, workspace, callable_name=callable_name)
+    log.info(
+        "guess_agent_target: strategy=%s callable=%s module=%s file=%s%s",
+        target.strategy,
+        target.callable_name,
+        target.module,
+        target.file_path,
+        f" reason={target.reason!r}" if target.reason else "",
+    )
+    return target
 
 
 def list_module_callables(module_file: Path) -> list[str]:
@@ -376,30 +427,73 @@ def list_module_callables(module_file: Path) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _pick_module(workspace: Path) -> str | None:
-    root = workspace / "agent.py"
-    if root.is_file():
-        return "agent"
+def _pick_module_file(workspace: Path) -> Path | None:
+    """Walk the workspace and return the file we'd treat as the agent module.
+
+    Returns the resolved ``Path`` (under ``workspace``) — *not* a dotted
+    string — so the caller can decide whether to express it as a direct
+    import, a dynamic-load reference, or a scaffold-with-TODO fallback.
+
+    Search order (each candidate checked for in-scope before considering):
+
+    1. ``<workspace>/agent.py``
+    2. ``<workspace>/agent/__init__.py``
+    3. Any ``agent.py`` deeper in the workspace (first one wins).
+    4. Any ``*.py`` defining ``run`` / ``agent`` / ``main`` at top level
+       (first one wins).
+    """
+    direct = workspace / "agent.py"
+    if direct.is_file() and is_within(direct, workspace):
+        return direct
     pkg_init = workspace / "agent" / "__init__.py"
-    if pkg_init.is_file():
-        return "agent"
+    if pkg_init.is_file() and is_within(pkg_init, workspace):
+        return pkg_init
 
     for path in workspace.rglob("agent.py"):
         if any(p in _EXCLUDE_DIRS for p in path.relative_to(workspace).parts):
             continue
-        return path.relative_to(workspace).with_suffix("").as_posix().replace("/", ".")
+        if is_within(path, workspace):
+            return path
 
-    # Look for any module exporting ``def run`` / ``def agent`` etc.
     for path in workspace.rglob("*.py"):
         if any(p in _EXCLUDE_DIRS for p in path.relative_to(workspace).parts):
+            continue
+        if not is_within(path, workspace):
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
         if any(needle in text for needle in ("def run(", "def agent(", "def main(")):
-            return path.relative_to(workspace).with_suffix("").as_posix().replace("/", ".")
+            return path
     return None
+
+
+def _pick_module(workspace: Path) -> str | None:
+    """Return the dotted-import name for the picked agent module, OR ``None``.
+
+    ``None`` here is *not* "no agent found" — it's "an agent was found but
+    its path can't be expressed as a valid dotted import." Callers that
+    need to disambiguate should use :func:`guess_agent_target` (which
+    returns a richer ``GenerationTarget``) instead.
+
+    Kept for back-compat with :func:`guess_agent_import`.
+    """
+    file_path = _pick_module_file(workspace)
+    if file_path is None:
+        return None
+    module = path_to_module(file_path, workspace)
+    if module is None:
+        # The file exists but the path has unsafe characters (hyphens,
+        # leading digits, etc.). Refuse to invent an invalid identifier;
+        # callers that need a fallback strategy use guess_agent_target.
+        log.info(
+            "agent file %s is under workspace but path isn't import-safe; "
+            "callers should switch to dynamic_load strategy",
+            file_path.relative_to(workspace),
+        )
+        return None
+    return module
 
 
 def _module_path_to_file(workspace: Path, dotted: str) -> Path | None:

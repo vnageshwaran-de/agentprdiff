@@ -12,9 +12,12 @@
 from __future__ import annotations
 
 import ast
+import logging
 import re
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -30,6 +33,7 @@ from ..agents_md import (
 from ..agents_md.templates import http_suite_definition
 from ..agents_md.validate import (
     guess_agent_module_and_callable,
+    guess_agent_target,
     validate,
 )
 from ..db import models
@@ -311,9 +315,19 @@ _SYSTEM_PROMPT = (
     "only these names: contains, contains_any, regex_match, tool_called, "
     "tool_sequence, no_tool_called, output_length_lt, latency_lt_ms, "
     "cost_lt_usd, semantic — do NOT invent graders;\n"
-    "  • imports the agent under test from the placeholder the user names "
-    "(default `agent`); call every grader with its required arguments — "
-    "e.g. `no_tool_called(\"send_email\")` not `no_tool_called()`;\n"
+    "  • imports the agent under test using the strategy the user message "
+    "specifies. When strategy=direct, use `from <module> import <callable> "
+    "as my_agent`. When strategy=dynamic_load, use "
+    "`importlib.util.spec_from_file_location` because the path contains "
+    "characters (hyphens, leading digits, dots) that aren't valid in "
+    "Python identifiers. When strategy=scaffold, leave a TODO comment and "
+    "a placeholder `def my_agent(query): ...` — DO NOT invent an import.\n"
+    "  • EVERY `from X import Y` and `import X` statement must use only "
+    "valid Python identifiers in X. NEVER emit a hyphen, leading digit, "
+    "dot-in-segment, or non-ASCII character inside a module path — "
+    "`from my-service.foo import bar` is a SYNTAX ERROR.\n"
+    "  • call every grader with its required arguments — e.g. "
+    "`no_tool_called(\"send_email\")` not `no_tool_called()`;\n"
     "  • binds one or more module-level Suite objects via `suite(...)`;\n"
     "  • includes a top-of-file docstring naming the suite;\n"
     "  • is syntactically valid Python 3.10+ and has no "
@@ -352,15 +366,66 @@ def _user_prompt(
     agent_function_name: str,
     agents_md: str,
     workspace_context: str = "",
+    target_strategy: str = "direct",
+    target_file_path: str | None = None,
+    target_safe_identifier: str | None = None,
+    target_reason: str = "",
 ) -> str:
+    # The "how to reference the agent" block adapts to the detected
+    # strategy so the LLM gets explicit, copy-pasteable code shape for
+    # the project's actual layout. Generic — never names a specific
+    # project; "scaffold" is the safe fallback when we can't be sure.
+    if target_strategy == "scaffold":
+        agent_block = (
+            "Strategy: scaffold (no agent module detected).\n"
+            f"  • {target_reason or 'workspace scan found no suitable entrypoint.'}\n"
+            "  • Do NOT invent an import. Emit a placeholder instead:\n"
+            "      # TODO: replace with your real agent\n"
+            "      def my_agent(query: str) -> str:\n"
+            "          raise NotImplementedError(\"wire this to your agent\")\n"
+            "    Then write the suite around `my_agent` as if it were real.\n"
+        )
+    elif target_strategy == "dynamic_load":
+        # Hyphens / leading digits / dots in directory names — can't be
+        # reached via a dotted import. Use spec_from_file_location, which
+        # is the standard library's escape hatch.
+        safe_ident = target_safe_identifier or "_agent_module"
+        agent_block = (
+            "Strategy: dynamic_load (path is not import-safe as a dotted "
+            "module).\n"
+            f"  • Reason: {target_reason or 'path contains non-identifier characters.'}\n"
+            f"  • Target file (relative to suite file): {target_file_path!r}\n"
+            f"  • Callable name inside that module: {agent_function_name!r}\n"
+            "  • Use exactly this loader pattern at module top level "
+            "(adjust the relative path if the suite ends up in a "
+            "subdirectory):\n\n"
+            "      import importlib.util\n"
+            "      from pathlib import Path\n\n"
+            "      _AGENT_FILE = Path(__file__).resolve().parent / "
+            f"{target_file_path!r}\n"
+            f"      _spec = importlib.util.spec_from_file_location("
+            f"{safe_ident!r}, _AGENT_FILE)\n"
+            f"      _module = importlib.util.module_from_spec(_spec)\n"
+            f"      _spec.loader.exec_module(_module)\n"
+            f"      my_agent = _module.{agent_function_name}\n\n"
+            "  • Do NOT emit a `from <path-with-hyphens> import …` line. "
+            "That's a Python syntax error.\n"
+        )
+    else:  # direct
+        agent_block = (
+            "Strategy: direct (dotted import is safe).\n"
+            f"  • Use exactly this import: `from {agent_import_target} "
+            f"import {agent_function_name} as my_agent`\n"
+            f"  • {agent_import_target} is the existing module — do NOT "
+            "rename it.\n"
+            f"  • {agent_function_name} is the existing callable name — "
+            "do NOT invent a different one.\n"
+        )
+
     body = (
         f"Generate a Python suite file for agentprdiff.\n\n"
         f"Suite name (Python identifier): {suite_name}\n"
-        f"The agent under test lives at: `from {agent_import_target} import "
-        f"{agent_function_name} as my_agent`\n"
-        f"  • {agent_import_target} is the existing module — do NOT rename it.\n"
-        f"  • {agent_function_name} is the existing callable name — do NOT "
-        f"invent a different one.\n\n"
+        f"{agent_block}\n"
         f"User request:\n{user_request}\n\n"
     )
     if workspace_context:
@@ -414,9 +479,21 @@ def _deep_scan_workspace(
     Each file is read up to ``_DEEP_SCAN_PER_FILE_CAP`` bytes; the total
     budget is ``_DEEP_SCAN_BYTE_BUDGET``. Returns the concatenated context
     string plus a manifest of ``[{path, bytes}]`` for the UI.
+
+    Scope guarantee: every file is verified to live under ``workspace``
+    via :func:`agents_md.import_sanitizer.is_within` (which resolves
+    symlinks), so a symlink that points outside the selected root never
+    smuggles its content into the LLM context. The selected root + the
+    files we ultimately ship are logged for traceability.
     """
+    from ..agents_md.import_sanitizer import is_within
+
     if not workspace.exists() or not workspace.is_dir():
+        log.info("deep_scan: workspace %s missing or not a directory", workspace)
         return "", []
+    # Resolve once so all subsequent is_within checks use the canonical
+    # path (handles symlinked workspaces, ``~`` in env, etc.).
+    workspace_resolved = workspace.resolve()
 
     # Step 1: locate the agent module's actual file on disk by walking the
     # dotted import target. We do a best-effort match — the user's project
@@ -479,6 +556,17 @@ def _deep_scan_workspace(
         # Skip files in excluded directories (rglob() can hit .git/ etc).
         if any(part in _DEEP_SCAN_EXCLUDE_PARTS for part in f.relative_to(workspace).parts):
             continue
+        # Scope guardrail: resolve every candidate and reject anything
+        # whose resolved location escapes ``workspace`` (e.g. a symlink
+        # that points to /etc/passwd). This is paranoid — rglob() shouldn't
+        # surface paths outside the workspace by itself — but the cost is
+        # one resolve() per file and the safety property is worth it.
+        if not is_within(f, workspace_resolved):
+            log.warning(
+                "deep_scan: rejecting %s — resolves outside workspace %s",
+                f, workspace_resolved,
+            )
+            continue
         try:
             raw = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -495,6 +583,12 @@ def _deep_scan_workspace(
         manifest.append({"path": rel, "bytes": len(text.encode("utf-8"))})
         budget -= len(text)
 
+    log.info(
+        "deep_scan: root=%s files=%d bytes=%d",
+        workspace_resolved,
+        len(manifest),
+        sum(int(m["bytes"]) for m in manifest),
+    )
     return "\n\n".join(chunks), manifest
 
 
@@ -570,9 +664,13 @@ async def generate_suite(
     except LLMError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    # Auto-detect the agent module + entrypoint callable. We pass both to
-    # the LLM so it doesn't guess ``run`` when the user's function is
-    # ``my_agent``.
+    # Auto-detect the agent module + entrypoint callable + the right
+    # generation strategy (direct dotted import vs. dynamic load via
+    # spec_from_file_location vs. scaffold-with-TODO). The strategy
+    # is what protects us against hyphenated directory names: when the
+    # path can't be expressed as a valid Python identifier chain, we
+    # tell the LLM to switch to dynamic loading instead of inventing
+    # an invalid `from foo-bar import …`.
     workspace = (
         Path(project.workspace_path)
         if project.workspace_path and project.intake_mode in ("git", "zip")
@@ -580,15 +678,29 @@ async def generate_suite(
     )
     agent_target = payload.agent_import_target
     agent_function_name = "run"
+    target_strategy = "direct"
+    target_file_path: str | None = None
+    target_safe_identifier: str | None = None
+    target_reason = ""
     if workspace is not None:
-        detected = guess_agent_module_and_callable(workspace)
-        if detected:
-            detected_module, detected_callable = detected
-            # Honor the user's explicit override of the module; pick the
-            # callable from inside that module if it's not the default.
-            if agent_target == "agent":
-                agent_target = detected_module
-            agent_function_name = detected_callable
+        detected_target = guess_agent_target(workspace)
+        if detected_target is not None:
+            target_strategy = detected_target.strategy
+            agent_function_name = detected_target.callable_name
+            target_file_path = detected_target.file_path
+            target_safe_identifier = detected_target.safe_identifier
+            target_reason = detected_target.reason
+            # Module-level override only happens for direct strategy.
+            # For dynamic_load we deliberately leave agent_target alone
+            # (the prompt uses target_file_path) since there's no safe
+            # dotted name to put in the import line.
+            if detected_target.strategy == "direct" and agent_target == "agent":
+                if detected_target.module:
+                    agent_target = detected_target.module
+        else:
+            # No candidate file at all → scaffold fallback.
+            target_strategy = "scaffold"
+            target_reason = "workspace scan found no suitable entrypoint file"
 
     # Deep-scan: read the agent module + siblings + tools + README into the
     # LLM context so cases reference real code, not just the playbook. Only
@@ -607,6 +719,10 @@ async def generate_suite(
         agent_function_name=agent_function_name,
         agents_md=bundled_agents_md(),
         workspace_context=workspace_context,
+        target_strategy=target_strategy,
+        target_file_path=target_file_path,
+        target_safe_identifier=target_safe_identifier,
+        target_reason=target_reason,
     )
 
     try:
