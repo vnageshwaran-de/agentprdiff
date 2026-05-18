@@ -1,0 +1,11 @@
+# Studio runtime state — never commit.
+# Docker mounts /data inside the container; the named volume "studio-data"
+# in docker-compose.yml is what actually persists. When running outside
+# Docker (dev), state ends up under ./data alongside this gitignore.
+data/
+*.db
+
+# Per-project venvs land under <workspace>/.studio-venv when the executor
+# provisions them. Not relevant to commit even though they live outside
+# this directory normally.
+.studio-venv/

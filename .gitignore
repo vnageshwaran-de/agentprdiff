@@ -31,3 +31,7 @@ env/
 .agentprdiff/runs/
 .agentprdiff/cache/
 .pypirc
+
+# Engine worktree nested inside Studio. Not committed — engine source
+# already lives at the repo root.
+studio/.claude/

@@ -1,0 +1,8 @@
+node_modules
+dist
+.env.local
+*.tsbuildinfo
+
+# Vite writes these next to vite.config.ts during dev — temporary timestamped
+# copies of the resolved config. Never useful to commit.
+*.timestamp-*.mjs
