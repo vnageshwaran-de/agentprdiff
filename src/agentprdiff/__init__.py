@@ -50,6 +50,8 @@ See ``docs/adapters.md`` for the full reference.
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
 from .core import (
     AgentFn,
     Case,
@@ -67,7 +69,15 @@ from .differ import AssertionChange, TraceDelta, diff_traces
 from .runner import CaseReport, Runner, RunReport
 from .store import BaselineStore
 
-__version__ = "0.2.5"
+# Source of truth is pyproject.toml's [project] version. Reading it here
+# means the runtime constant can never drift from the wheel metadata; the
+# fallback covers the "running from a source checkout that wasn't pip
+# installed" case (e.g. `python -m pytest` on a fresh clone before
+# `pip install -e .`).
+try:
+    __version__ = _pkg_version("agentprdiff")
+except PackageNotFoundError:  # pragma: no cover — only hit in source-tree runs
+    __version__ = "0+unknown"
 
 __all__ = [
     # core

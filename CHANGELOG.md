@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-05-17
+
+Patch release. Fixes a long-standing drift between `pyproject.toml`'s
+`version` field and the in-code `__version__` constant: the constant
+in `src/agentprdiff/__init__.py` was hardcoded and got out of sync at
+every release (0.3.0 shipped while still reporting "0.2.5" via
+`agentprdiff.__version__`, even though `pip show` correctly read
+"0.3.0" from the wheel metadata).
+
+### Fixed
+
+- `agentprdiff.__version__` is now read from the installed package
+  metadata via `importlib.metadata.version("agentprdiff")` instead of
+  a hardcoded string. The runtime constant matches the wheel metadata
+  by construction; no human step can let them drift again. Falls back
+  to `"0+unknown"` when running from an uninstalled source checkout.
+
+This is purely a metadata fix — no behavior change, no API additions,
+no removed APIs. The `set_default_model()` hook from 0.3.0 is
+unchanged.
+
 ## [0.3.0] — 2026-05-17
 
 Adds a model-override hook on the adapters package. This unblocks
