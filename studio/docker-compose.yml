@@ -1,0 +1,103 @@
+# docker-compose.yml
+#
+# Two run modes from the same file:
+#
+#   1. SQLite (default, zero config) — just `docker compose up`. Studio
+#      stores its DB + cloned repos + uploads under the `studio-data`
+#      volume. Plenty fast for a single-tenant install.
+#
+#   2. Postgres (recommended for shared deployments) — bring up with
+#      `docker compose --profile postgres up`. The `db` service spins up,
+#      and STUDIO_DATABASE_URL is wired through.
+#
+# LLM provider resolution (used by "Generate suite with AI"):
+#
+#   Defaults below pin Studio to Gemini.
+#     1. Get a key: https://aistudio.google.com/app/apikey
+#     2. Open http://localhost:8080 → Secrets → save:
+#          name = GEMINI_API_KEY, scope = global, value = your key
+#     3. Click "Generate with AI" on any project's Project guide card.
+#
+#   To switch providers, change STUDIO_LLM_PROVIDER below to one of:
+#     anthropic | openai | gemini | ollama
+#   …and save the matching API key in the Secrets page. Or leave it blank
+#   to let the resolver auto-pick: anthropic → openai → gemini → ollama.
+
+services:
+  studio:
+    build:
+      context: ..
+      dockerfile: studio/Dockerfile
+    image: agentprdiff-studio:dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - studio-data:/data
+    environment:
+      # Always-on knobs. Override anything else via an `.env` file or
+      # `environment:` keys here.
+      STUDIO_DATA_DIR: /data
+      STUDIO_FRONTEND_DIR: /opt/studio/frontend
+      # Engine req: pin a published version or point at an editable clone.
+      STUDIO_ENGINE_REQ: agentprdiff>=0.2.5
+      # Postgres profile rewires the DB URL via the `db` dependency below.
+      STUDIO_DATABASE_URL: ${STUDIO_DATABASE_URL:-}
+
+      # ── LLM (AI suite scaffold) ────────────────────────────────────────
+      # Studio resolves a provider per request: explicit STUDIO_LLM_PROVIDER
+      # wins; otherwise it picks the first matching secret it finds in this
+      # order: ANTHROPIC_API_KEY → OPENAI_API_KEY → GEMINI_API_KEY; falling
+      # back to Ollama on the host.
+      #
+      # This install is configured for Gemini by default — save your key as
+      # ``GEMINI_API_KEY`` (scope: global) in Studio's Secrets page.
+      # https://aistudio.google.com/app/apikey
+      STUDIO_LLM_PROVIDER: ${STUDIO_LLM_PROVIDER:-gemini}
+      # Default model. Use Google's auto-updating aliases so we don't have
+      # to chase retirements. Verify what your key has access to with:
+      #   curl "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY" \
+      #     | jq '.models[].name'
+      # Current Gemini options (May 2026):
+      #   gemini-flash-latest        auto-updating, fast — recommended default
+      #   gemini-pro-latest          auto-updating, smarter, slower
+      #   gemini-3.1-flash-lite      explicit pin (3.x generation)
+      #   gemini-3.1-pro-preview     explicit pin, top tier
+      #   gemini-2.5-flash           explicit pin (older, still supported)
+      # If you switch STUDIO_LLM_PROVIDER, pick a matching model:
+      #   anthropic → claude-sonnet-4-6
+      #   openai    → gpt-4o-mini
+      #   ollama    → llama3.1:8b
+      STUDIO_LLM_MODEL: ${STUDIO_LLM_MODEL:-gemini-flash-latest}
+
+      # Ollama fallback — only used if STUDIO_LLM_PROVIDER is empty AND no
+      # cloud key is saved. ``host.docker.internal`` is the host-from-container
+      # loopback on Docker Desktop / Rancher Desktop; ``extra_hosts`` below
+      # makes it work on plain Docker on Linux too.
+      STUDIO_OLLAMA_BASE_URL: ${STUDIO_OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+      # Override the OpenAI base URL — for Groq / OpenRouter / Together /
+      # vLLM / LM Studio. Combined with an *_API_KEY secret it overrides
+      # the resolver's normal "openai means OpenAI" assumption.
+      STUDIO_LLM_BASE_URL: ${STUDIO_LLM_BASE_URL:-}
+
+    # Resolves ``host.docker.internal`` to the host gateway. Already a no-op
+    # on Docker Desktop / Rancher Desktop; needed for plain Docker on Linux.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    restart: unless-stopped
+
+  db:
+    profiles: ["postgres"]
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: studio
+      POSTGRES_PASSWORD: studio
+      POSTGRES_DB: studio
+    volumes:
+      - studio-pg:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  studio-data:
+  studio-pg:

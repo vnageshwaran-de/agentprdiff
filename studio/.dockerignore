@@ -1,0 +1,36 @@
+# Keep the build context tight. Everything under here is pulled out of
+# the COPY layer in the Dockerfile.
+
+# Frontend
+studio/frontend/node_modules
+studio/frontend/dist
+studio/frontend/.vite
+studio/frontend/*.tsbuildinfo
+
+# Python local artifacts
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.venv
+**/venv
+**/.studio-venv
+
+# IDE / OS noise
+.idea
+.vscode
+.DS_Store
+
+# Engine artifacts
+dist/
+build/
+.eggs/
+*.egg-info
+
+# Studio runtime state
+.studio-data/
+studio/backend/.studio-data/
+
+# Git internals — we don't need history inside the image
+.git
