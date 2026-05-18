@@ -37,6 +37,104 @@ Plus the orthogonal **intake modes** for projects you create inside Studio:
 * **zip** — upload an archive, same execution path as git.
 * **http** — point Studio at a deployed endpoint, author suites as JSON, runs go in-process via httpx (no Python execution, baselines stored in the DB).
 
+## Private git repos
+
+Studio supports two non-interactive auth paths for private repos. The
+container has no TTY, so git **never prompts** — you choose one of these
+before creating the project.
+
+### Option A — SSH (`git@github.com:owner/repo.git`)
+
+The Studio image installs `openssh-client`, so the only thing you need
+to provide is your SSH key. Mount your host's `~/.ssh` into the
+container (read-only is fine):
+
+```yaml
+# studio/docker-compose.yml — add to the studio service
+services:
+  studio:
+    # … existing config …
+    volumes:
+      - studio-data:/data
+      - ${HOME}/.ssh:/root/.ssh:ro    # ← add this line
+```
+
+Two gotchas worth knowing:
+
+* The container runs as root, so the SSH client looks at `/root/.ssh`.
+  If you'd prefer a non-default location, set `GIT_SSH_COMMAND="ssh -i
+  /path/to/key"` via `STUDIO_*` env (or directly on the service in
+  compose).
+* `known_hosts` lives in the same directory you mount. If you've never
+  ssh'd to the remote from your host, run
+  `ssh-keyscan github.com >> ~/.ssh/known_hosts` once before starting
+  Studio, otherwise the first clone fails with *"Host key verification
+  failed."* (Studio surfaces this error inline with the same hint.)
+
+Then point Studio at an SSH URL when you create the project:
+
+```
+git@github.com:vnageshwaran-de/private-repo.git
+```
+
+### Option B — HTTPS + token (`https://github.com/owner/repo.git`)
+
+Save a personal access token in **Studio's Secrets page** (top-right
+nav), then create the project with a plain `https://` URL. Studio reads
+the token at clone time, sends it via `Authorization: bearer …` in
+git's transient config, and never embeds it in the URL or writes it to
+disk.
+
+Secret name → host mapping (project-scoped wins over global):
+
+| Host | Secret name |
+|---|---|
+| `github.com` | `GITHUB_TOKEN` |
+| `gitlab.com` | `GITLAB_TOKEN` |
+| `bitbucket.org` | `BITBUCKET_TOKEN` |
+| Anything else (self-hosted Enterprise / on-prem) | `GIT_HTTPS_TOKEN` |
+
+The fallback `GIT_HTTPS_TOKEN` lets you point Studio at self-hosted
+GitHub Enterprise, self-hosted GitLab, or Gitea / Forgejo without
+baking the hostname into Studio's config.
+
+**What the token needs:** for GitHub classic PATs, `repo` scope. For
+GitHub fine-grained PATs, `Contents: read-only` on the repos you want
+to clone is enough. For GitLab, `read_repository` scope.
+
+**What Studio does with it:**
+
+* Reads the encrypted secret at clone time (Fernet at rest, plaintext
+  only in memory of the requesting worker).
+* Injects `http.https://<host>/.extraheader: Authorization: bearer
+  <token>` via `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_N` /
+  `GIT_CONFIG_VALUE_N` env vars on the git subprocess.
+* Sets `GIT_TERMINAL_PROMPT=0` so git can't block on stdin even when
+  the token is wrong (you get a clean error in the UI instead of a
+  hung sync).
+* Redacts the token from any error string before it reaches the UI,
+  the logs, or the project row.
+
+**What Studio refuses:** URLs with embedded credentials
+(`https://user:pat@host/...`). The error tells you to strip the
+credential and save it in the Secrets page instead — embedded
+credentials persist in the project row, in git's reflog, and in the
+workspace's `.git/config`, which are all places they shouldn't be.
+
+**Recovering from a wrong / expired token:** open the Secrets page,
+update the value, click Sync on the project. The next clone picks up
+the new token. The old one isn't kept anywhere.
+
+### When to use which
+
+| Situation | Pick |
+|---|---|
+| Personal use, ssh-agent already configured on host | SSH |
+| Want to avoid mounting host paths into the container | HTTPS + token |
+| Self-hosted Enterprise, no SSH access | HTTPS + token (`GIT_HTTPS_TOKEN`) |
+| Multiple users sharing the Studio container | HTTPS + token (project-scoped secrets isolate per project) |
+| CI / headless deployment | HTTPS + token (no key material to ship) |
+
 ## Local development (without Docker)
 
 ```bash
@@ -74,7 +172,7 @@ Everything is env-driven. The most useful knobs:
 * Engine (`agentprdiff`) installed from PyPI (or a path, via `STUDIO_ENGINE_REQ`).
 * Studio backend (FastAPI + SQLAlchemy + httpx + GitPython).
 * Built SPA (Vite output) at `/opt/studio/frontend`.
-* `git`, `build-essential`, `tini` for clean signal handling.
+* `git`, `openssh-client`, `build-essential`, `tini` for clean signal handling. `openssh-client` is what makes `git@github.com:…` URLs work — see the [Private git repos](#private-git-repos) section above.
 
 The image runs as `uvicorn agentprdiff_studio.main:app --host 0.0.0.0 --port 8080` under `tini`. A healthcheck hits `/api/health` every 30s.
 

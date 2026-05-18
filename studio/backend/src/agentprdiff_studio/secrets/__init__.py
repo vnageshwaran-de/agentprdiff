@@ -8,6 +8,12 @@ environment a run subprocess should see.
 """
 
 from .crypto import CryptoError, decrypt, encrypt
-from .resolve import load_env_for_run
+from .resolve import load_env_for_run, load_named_secrets
 
-__all__ = ["encrypt", "decrypt", "CryptoError", "load_env_for_run"]
+__all__ = [
+    "encrypt",
+    "decrypt",
+    "CryptoError",
+    "load_env_for_run",
+    "load_named_secrets",
+]

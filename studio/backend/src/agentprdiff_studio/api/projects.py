@@ -23,9 +23,15 @@ from ..db import models
 from ..db.session import get_session
 from ..intake.discovery import discover_suites
 from ..intake.git import GitIntakeError, clone_or_pull
+from ..intake.git_auth import (
+    FALLBACK_TOKEN_NAME,
+    preferred_secret_names,
+    resolve_auth,
+)
 from ..intake.http import HttpIntakeError, normalize_http_config, normalize_suite_definition
 from ..intake.zip import ZipIntakeError
 from ..intake.zip import extract as zip_extract
+from ..secrets import load_named_secrets
 from ..settings import get_settings
 from .schemas import (
     HttpSuiteCreate,
@@ -84,15 +90,25 @@ async def create_project(
     session.add(project)
     await session.flush()  # gives us project.id without committing
 
+    # Resolve a private-repo token before cloning. For SSH URLs / public
+    # HTTPS this returns None and the clone proceeds with no auth header.
+    auth = await _resolve_git_auth(
+        session, project_id=project.id, source=payload.source
+    )
+
     try:
         workspace = await clone_or_pull(
             projects_dir=settings.projects_dir,
             project_id=project.id,
             source=payload.source,
             git_ref=payload.git_ref,
+            auth=auth,
         )
     except GitIntakeError as exc:
         # Roll back the half-created project so the user can retry the call.
+        # The exception message is already redacted by clone_or_pull and
+        # explain_clone_failure has suggested the SSH-vs-HTTPS-token path
+        # when applicable.
         await session.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -217,12 +233,16 @@ async def sync_project(
         raise HTTPException(status_code=404, detail="project not found")
 
     if project.intake_mode == "git":
+        auth = await _resolve_git_auth(
+            session, project_id=project.id, source=project.source
+        )
         try:
             workspace = await clone_or_pull(
                 projects_dir=settings.projects_dir,
                 project_id=project.id,
                 source=project.source,
                 git_ref=project.git_ref,
+                auth=auth,
             )
         except GitIntakeError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -643,6 +663,29 @@ async def list_recent_runs(
 
 
 # ---------------------------------------------------------------------- helpers
+
+
+async def _resolve_git_auth(
+    session: AsyncSession, *, project_id: int | None, source: str
+):
+    """Look up the right token from Studio Secrets for ``source``'s host.
+
+    Returns a ``GitAuth`` (or ``None`` for SSH / public / unknown-host
+    URLs). Project-scoped secrets override global; falls back to
+    ``GIT_HTTPS_TOKEN`` when the host isn't one of the well-known ones.
+    """
+    from ..intake.git_auth import detect_scheme, host_of
+
+    if detect_scheme(source) not in ("https", "http"):
+        return None
+    host = host_of(source)
+    if not host:
+        return None
+    names = preferred_secret_names(host)
+    secrets = await load_named_secrets(
+        session, project_id=project_id, names=names
+    )
+    return resolve_auth(source, secrets)
 
 
 async def _save_and_extract(

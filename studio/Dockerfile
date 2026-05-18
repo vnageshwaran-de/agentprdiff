@@ -20,6 +20,11 @@ RUN npm run build
 FROM python:3.12-slim AS runtime
 
 # git: required for ``intake_mode=git`` (GitPython shells out).
+# openssh-client: required for cloning private repos over SSH
+#   (``git@github.com:owner/repo.git``). Without this, GitPython's
+#   subprocess fails with "cannot run ssh: No such file or directory".
+#   Operators mount their ~/.ssh into the container at run time —
+#   the package itself is just the ssh binary plus known_hosts machinery.
 # build-essential: pip occasionally compiles small wheels in the venv
 #   provisioner; keeping the toolchain available avoids surprise failures
 #   when an adopter's project has a non-pure-python dep.
@@ -27,6 +32,7 @@ FROM python:3.12-slim AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        git \
+       openssh-client \
        build-essential \
        tini \
        ca-certificates \

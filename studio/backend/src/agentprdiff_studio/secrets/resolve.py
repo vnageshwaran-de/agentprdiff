@@ -12,6 +12,8 @@ only in memory long enough to populate the subprocess env dict.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -53,3 +55,43 @@ async def load_env_for_run(
             continue
 
     return env
+
+
+async def load_named_secrets(
+    session: AsyncSession,
+    *,
+    project_id: int | None,
+    names: Iterable[str],
+) -> dict[str, str]:
+    """Decrypt and return the subset of secrets matching ``names``.
+
+    Scope precedence matches :func:`load_env_for_run`: project-scoped beats
+    global. Used by callers (e.g. git intake) that need just a handful of
+    secrets and don't want the full env merge. Bad ciphertexts are silently
+    skipped — same defensive behavior as the env path.
+    """
+    wanted = set(names)
+    if not wanted:
+        return {}
+
+    scopes: list[str] = ["global"]
+    if project_id is not None:
+        scopes.append(f"project:{project_id}")
+
+    rows = (
+        await session.execute(
+            select(models.Secret).where(
+                models.Secret.scope.in_(scopes),
+                models.Secret.name.in_(wanted),
+            )
+        )
+    ).scalars().all()
+
+    out: dict[str, str] = {}
+    globals_first = sorted(rows, key=lambda r: 0 if r.scope == "global" else 1)
+    for row in globals_first:
+        try:
+            out[row.name] = decrypt(row.encrypted_value)
+        except CryptoError:
+            continue
+    return out
