@@ -26,20 +26,50 @@ What this module does
    a file path; returns ``None`` when no safe derivation exists.
 3. ``classify_target(file_path, root)`` — pick a generation strategy:
 
-   * ``"direct"``        — emit ``from <module> import …`` (path is import-safe)
-   * ``"dynamic_load"``  — emit ``importlib.util.spec_from_file_location(...)``
-                            (file exists but the path isn't import-safe)
-   * ``"scaffold"``      — no agent module found at all; generate a stub with
-                            ``TODO`` markers instead of inventing imports
+   * ``"direct"``           — emit ``from <module> import …`` (path is
+                               import-safe and a callable agent function
+                               is exported).
+   * ``"adapter"``           — the file exists but its path can't be
+                               expressed as a dotted import OR the file
+                               is a service/app with no top-level callable
+                               agent function. The suite generates an
+                               *inline* eval-adapter function
+                               (``def my_agent(query): ...``) with
+                               framework-aware TODO hints instead of
+                               importing anything from a guessed path.
+   * ``"extend_existing"``   — the workspace already contains a discoverable
+                               ``agentprdiff`` suite. The generation
+                               prompt receives that file and is told to
+                               *add* cases, not produce a new generic suite.
+   * ``"scaffold"``          — no agent module found at all; generate a
+                               stub with ``TODO`` markers instead of
+                               inventing imports.
 
-4. ``validate_generated_imports(source)`` — AST-walks generated suite code
+4. ``detect_framework(file_path)`` — light pattern match on the file
+   content to identify Flask / FastAPI / Cloud Function / CLI / module
+   shapes. Drives the adapter prompt: a Flask app needs a test-client
+   adapter, a Cloud Function needs an HTTP-handler adapter, etc.
+
+5. ``find_existing_suite(workspace)`` — first ``.py`` under the workspace
+   that contains both an ``agentprdiff`` import and a ``suite(...)``
+   call. Triggers the ``extend_existing`` strategy when found.
+
+6. ``validate_generated_imports(source)`` — AST-walks generated suite code
    and confirms every ``import``/``from`` statement uses only valid
    identifiers. Returns a list of structured diagnostics suitable for the
    UI's preflight error panel.
 
 The module is *generic* — no project name, no hardcoded directory, no
 "if path contains foo then …" specials. The only domain knowledge is the
-Python language reference for what counts as an identifier.
+Python language reference for what counts as an identifier and a small
+set of well-known framework markers.
+
+Hard rule: we do **not** generate ``importlib.util.spec_from_file_location``
+calls from guessed paths. The previous ``dynamic_load`` strategy did that
+and produced suites that imported the wrong module when the user's layout
+shifted, or executed arbitrary code from a path the user didn't approve.
+The adapter strategy makes the user-supplied integration point obvious
+and forces a deliberate wiring step.
 """
 
 from __future__ import annotations
@@ -130,8 +160,11 @@ def path_to_module(file_path: Path, root: Path) -> str | None:
     * any directory in the path between ``root`` and ``file_path`` fails
       identifier validation.
 
-    Callers must treat ``None`` as a signal to switch to the dynamic-load
-    strategy or scaffold fallback.
+    Callers must treat ``None`` as a signal to switch to the adapter
+    strategy (inline ``my_agent`` wrapper) or the scaffold fallback.
+    The sanitizer deliberately does NOT recommend dynamic loading via
+    ``importlib.util.spec_from_file_location``: we don't generate imports
+    from guessed paths.
     """
     try:
         rel = file_path.resolve().relative_to(root.resolve())
@@ -181,7 +214,12 @@ def is_within(path: Path, root: Path) -> bool:
 # ---------------------------------------------------------------------------
 
 
-Strategy = Literal["direct", "dynamic_load", "scaffold"]
+Strategy = Literal["direct", "adapter", "extend_existing", "scaffold"]
+
+# Framework labels emitted by :func:`detect_framework`. Kept narrow on
+# purpose — every value listed here gets a tailored adapter prompt;
+# unknown shapes fall back to ``"module"``.
+Framework = Literal["flask", "fastapi", "cloud_function", "cli", "module"]
 
 
 @dataclass(slots=True, frozen=True)
@@ -190,12 +228,25 @@ class GenerationTarget:
 
     ``strategy="direct"``:
         ``module`` is set; the suite should ``from {module} import {callable}``.
+        ``framework`` is set when the file matches a known shape (Flask,
+        FastAPI, etc.) so the prompt can mention it; the LLM still uses a
+        direct import.
 
-    ``strategy="dynamic_load"``:
-        ``file_path`` is set (relative to the workspace root); the suite
-        should load the module via ``importlib.util.spec_from_file_location``.
-        ``module`` may be set to the closest safe prefix (for documentation
-        purposes) but isn't import-safe by itself.
+    ``strategy="adapter"``:
+        Either the file's path can't be expressed as a dotted import, OR
+        the file is a service/app with no top-level callable agent.
+        ``file_path`` and ``module`` are *informational* (for the LLM's
+        TODO comment); the suite must define an inline adapter function
+        and **must not** emit a ``spec_from_file_location`` call.
+        ``framework`` tells the prompt which adapter shape to use
+        (Flask test client, FastAPI test client, Cloud Function handler,
+        plain function call).
+
+    ``strategy="extend_existing"``:
+        ``existing_suite_path`` is set; the prompt should *add* cases to
+        that file rather than emit a new generic suite. Other fields are
+        populated as for the base classification so the LLM has context
+        about what the suite tests.
 
     ``strategy="scaffold"``:
         Neither ``module`` nor ``file_path`` is reliably set; the suite
@@ -207,20 +258,28 @@ class GenerationTarget:
     callable_name: str
     module: str | None = None
     file_path: str | None = None
-    # The basename of the resolved file (no extension), used to invent a
-    # stable Python identifier when we generate dynamic-load code.
+    # The cleaned-up file stem (always a valid Python identifier) — used
+    # as a stable name for the inline adapter function or for any
+    # documentation reference inside the generated suite.
     safe_identifier: str | None = None
     # Reason we picked this strategy. Empty string for ``direct``.
     reason: str = ""
+    # Inferred framework / shape of the target file. Populated whenever a
+    # file is identified; ``None`` for ``scaffold``.
+    framework: Framework | None = None
+    # Relative path (POSIX) to an existing ``agentprdiff`` suite that the
+    # generation prompt should extend instead of replacing.
+    existing_suite_path: str | None = None
 
 
 def _safe_identifier_from_path(file_path: Path) -> str:
     """Turn an arbitrary file path into a safe Python identifier.
 
-    Used as the *internal* module name we pass to
-    ``importlib.util.spec_from_file_location``. The spec accepts any
-    string here (it's purely a label), but generating a clean snake_case
-    one makes the resulting suite readable.
+    Used as the *inline adapter function's* helper name and for any
+    documentation reference inside the generated suite (e.g. a TODO
+    comment that names the file the adapter is wrapping). Producing a
+    clean snake_case name keeps the resulting suite readable even when
+    the original filename has dots, dashes, or leading digits.
 
     Strategy: take the filename without extension, replace every
     non-identifier-safe character with ``_``, collapse runs of
@@ -242,16 +301,36 @@ def classify_target(
     file_path: Path | None,
     root: Path,
     callable_name: str = "run",
+    *,
+    has_callable: bool = True,
+    framework: Framework | None = None,
 ) -> GenerationTarget:
     """Decide how the generated suite should reference ``file_path``.
 
     Generic — no project-name special cases. The flowchart:
 
-    * No ``file_path``                  → ``scaffold``
-    * ``file_path`` escapes ``root``    → ``scaffold`` (scope violation)
-    * ``path_to_module`` succeeds       → ``direct``
-    * Otherwise (path contains unsafe
-      segments like hyphens)            → ``dynamic_load``
+    * No ``file_path``                       → ``scaffold``
+    * ``file_path`` escapes ``root``         → ``scaffold`` (scope violation)
+    * ``path_to_module`` succeeds AND a
+      callable agent function exists         → ``direct``
+    * Otherwise (file exists but the path
+      isn't import-safe, OR there is no
+      callable agent function in the file)   → ``adapter``
+
+    ``has_callable``:
+        When the caller has already inspected the target file and knows
+        it does NOT expose a top-level callable to use as the agent (e.g.
+        it's a Flask app object, a FastAPI router, a Cloud Function
+        decorator-style handler), pass ``has_callable=False``. The
+        ``adapter`` strategy is then selected even when the path itself
+        is import-safe — the LLM will define an inline ``my_agent``
+        wrapper around the framework's entry point instead of inventing
+        a function name to import.
+
+    ``framework``:
+        Optional framework hint propagated onto the returned target.
+        Used only as documentation for ``direct`` / ``adapter``; ignored
+        for ``scaffold``.
     """
     if file_path is None:
         return GenerationTarget(
@@ -272,43 +351,285 @@ def classify_target(
         )
 
     module = path_to_module(file_path, root)
-    if module is not None:
+    rel = file_path.resolve().relative_to(root.resolve())
+    safe_ident = _safe_identifier_from_path(file_path)
+
+    if module is not None and has_callable:
         return GenerationTarget(
             strategy="direct",
             callable_name=callable_name,
             module=module,
-            file_path=str(file_path.resolve().relative_to(root.resolve()).as_posix()),
-            safe_identifier=_safe_identifier_from_path(file_path),
+            file_path=rel.as_posix(),
+            safe_identifier=safe_ident,
+            framework=framework,
         )
 
-    # We have a file under root but can't derive a safe dotted name —
-    # likely a hyphenated directory or some other non-identifier char.
-    # Suggest the closest safe prefix for the diagnostic, but generate
-    # code that uses spec_from_file_location.
-    closest = closest_safe_subpath(file_path, root)
-    rel = file_path.resolve().relative_to(root.resolve())
-    bad = next(
-        (p for p in rel.parts if not is_valid_identifier(p.removesuffix(".py"))),
-        rel.parts[-1] if rel.parts else "",
-    )
-    reason_bits = [
-        f"path segment {bad!r} contains characters that aren't valid in "
-        "Python identifiers (hyphens, dots, leading digits, etc.); "
-        "dotted-import syntax can't reach it",
-    ]
-    if closest:
-        reason_bits.append(
-            f"closest safely-importable prefix is {closest!r} — consider "
-            "renaming the offending directory if you want a direct import"
+    # ``adapter`` strategy: either the path isn't import-safe OR the file
+    # has no top-level callable agent. Either way, the suite generates an
+    # inline ``def my_agent(query)`` wrapper instead of importing from a
+    # guessed path. We surface the closest safe prefix and a clear reason
+    # so the LLM (and any human reading the diagnostics) understands
+    # exactly why a direct import is off the table.
+    reason_bits: list[str] = []
+    if module is None:
+        closest = closest_safe_subpath(file_path, root)
+        bad = next(
+            (p for p in rel.parts if not is_valid_identifier(p.removesuffix(".py"))),
+            rel.parts[-1] if rel.parts else "",
         )
+        reason_bits.append(
+            f"path segment {bad!r} contains characters that aren't valid "
+            "in Python identifiers (hyphens, dots, leading digits, etc.); "
+            "dotted-import syntax can't reach it",
+        )
+        if closest:
+            reason_bits.append(
+                f"closest safely-importable prefix is {closest!r} — "
+                "rename the offending directory if you want a direct import",
+            )
+        documented_module = closest
+    else:
+        documented_module = module
+
+    if not has_callable:
+        framework_label = framework or "module"
+        reason_bits.append(
+            f"file matches a {framework_label} shape with no top-level "
+            "callable agent function — the suite must define an inline "
+            "adapter that drives the application's real entry point",
+        )
+
     return GenerationTarget(
-        strategy="dynamic_load",
+        strategy="adapter",
         callable_name=callable_name,
-        module=closest,  # documentation; not for code generation
+        module=documented_module,  # documentation only; not for code generation
         file_path=rel.as_posix(),
-        safe_identifier=_safe_identifier_from_path(file_path),
-        reason="; ".join(reason_bits),
+        safe_identifier=safe_ident,
+        reason="; ".join(reason_bits) if reason_bits else "",
+        framework=framework,
     )
+
+
+# ---------------------------------------------------------------------------
+# Framework detection
+# ---------------------------------------------------------------------------
+
+
+# Compact pattern → framework label table. Each entry is
+# ``(label, ordered list of regexes any of which is sufficient evidence)``.
+# Order matters: we check Cloud Function before Flask because a Cloud
+# Function file often imports Flask too, and we want the more specific
+# label. Patterns are compiled once at import time.
+_FRAMEWORK_PATTERNS: tuple[tuple[Framework, tuple[re.Pattern[str], ...]], ...] = (
+    (
+        "cloud_function",
+        (
+            re.compile(r"\bfunctions_framework\b"),
+            re.compile(r"@functions_framework\.http\b"),
+        ),
+    ),
+    (
+        "fastapi",
+        (
+            re.compile(r"\bfrom\s+fastapi\b"),
+            re.compile(r"\bimport\s+fastapi\b"),
+            re.compile(r"\bFastAPI\s*\("),
+        ),
+    ),
+    (
+        "flask",
+        (
+            re.compile(r"\bfrom\s+flask\b"),
+            re.compile(r"\bimport\s+flask\b"),
+            re.compile(r"\bFlask\s*\("),
+        ),
+    ),
+    (
+        "cli",
+        (
+            re.compile(r"\bimport\s+click\b"),
+            re.compile(r"\bfrom\s+click\b"),
+            re.compile(r"@click\.command\b"),
+            re.compile(r"\bargparse\.ArgumentParser\s*\("),
+            re.compile(r"\bfrom\s+argparse\b"),
+        ),
+    ),
+)
+
+
+def detect_framework(file_path: Path) -> Framework:
+    """Inspect ``file_path``'s source and label its framework shape.
+
+    Returns one of:
+
+    * ``"cloud_function"`` — Google Cloud Functions / ``functions_framework``
+    * ``"fastapi"``         — FastAPI route module
+    * ``"flask"``           — Flask app or blueprint
+    * ``"cli"``             — Click / argparse entrypoint
+    * ``"module"``          — plain Python module (no framework markers)
+
+    The label drives the adapter prompt — a Flask app needs a test-client
+    wrapper, a Cloud Function needs an HTTP-handler wrapper, a CLI needs
+    ``CliRunner.invoke`` or a subprocess shim, etc. Detection is read-only
+    and tolerant of decoding errors.
+    """
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return "module"
+    # Hard cap so a 10 MB generated bundle doesn't burn CPU on regex.
+    # The framework markers always appear in the first few hundred lines.
+    snippet = text[:64_000]
+    for label, patterns in _FRAMEWORK_PATTERNS:
+        for pat in patterns:
+            if pat.search(snippet):
+                return label
+    return "module"
+
+
+def file_has_callable_agent(file_path: Path) -> bool:
+    """True iff ``file_path`` has a top-level callable usable as the agent.
+
+    A "callable agent" is a module-level ``def`` / ``async def`` (the
+    framework also accepts callable instances, but we can't tell from a
+    static scan whether ``foo = MyAgent()`` is callable). Used by
+    :func:`classify_target` to switch to the ``adapter`` strategy for
+    files that are framework-shaped but expose no plain function — Flask
+    apps, FastAPI routers, Cloud Function decorator-style handlers.
+    """
+    try:
+        tree = ast.parse(file_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, SyntaxError):
+        return False
+    return any(
+        isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        for node in tree.body
+    )
+
+
+# ---------------------------------------------------------------------------
+# Existing-suite detection
+# ---------------------------------------------------------------------------
+
+
+# Directories never worth walking when looking for an existing suite —
+# kept in sync with the exclusion list used by the rest of discovery.
+_EXISTING_SUITE_EXCLUDE = {
+    ".git", ".venv", "venv", "node_modules", "__pycache__",
+    ".pytest_cache", ".ruff_cache", ".mypy_cache", "dist", "build",
+    ".agentprdiff", ".studio-venv", ".studio-staging", ".studio-tour",
+}
+
+_AGENTPRDIFF_IMPORT_RE = re.compile(
+    r"^\s*(?:from\s+agentprdiff(?:\.\w+)?\s+import|import\s+agentprdiff)\b",
+    re.MULTILINE,
+)
+
+
+def _imports_agentprdiff(tree: ast.AST) -> bool:
+    """Walk ``tree`` and look for a real ``agentprdiff`` import statement.
+
+    Catches both ``from agentprdiff import …`` and ``import agentprdiff``,
+    including ``import agentprdiff.graders``. AST-level so comments and
+    string literals never produce false positives.
+    """
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if mod == "agentprdiff" or mod.startswith("agentprdiff."):
+                return True
+        elif isinstance(node, ast.Import):
+            for alias in node.names:
+                top = (alias.name or "").split(".", 1)[0]
+                if top == "agentprdiff":
+                    return True
+    return False
+
+
+def _calls_suite_at_module_level(tree: ast.Module) -> bool:
+    """True iff the module body contains a top-level ``suite(...)`` call.
+
+    Recognises both the bare statement form ``suite(...)`` and the
+    common assignment form ``foo = suite(...)``. We deliberately only
+    look at the module body — calls hidden inside ``def``s don't count
+    as a project-canonical suite (they're typically helpers).
+    """
+
+    def _is_suite_call(value: ast.AST) -> bool:
+        if not isinstance(value, ast.Call):
+            return False
+        func = value.func
+        if isinstance(func, ast.Name) and func.id == "suite":
+            return True
+        return isinstance(func, ast.Attribute) and func.attr == "suite"
+
+    for node in tree.body:
+        if isinstance(node, ast.Expr) and _is_suite_call(node.value):
+            return True
+        if isinstance(node, ast.Assign) and _is_suite_call(node.value):
+            return True
+        if isinstance(node, ast.AnnAssign) and node.value is not None and _is_suite_call(
+            node.value
+        ):
+            return True
+    return False
+
+
+def find_existing_suite(workspace: Path) -> Path | None:
+    """Return the path to an existing ``agentprdiff`` suite, or ``None``.
+
+    A suite is recognised by the same heuristic Studio's discovery uses:
+    the file imports from ``agentprdiff`` AND contains a module-level
+    ``suite(...)`` call. Both checks run against the AST, so comments
+    and string literals never produce false positives. We walk the
+    workspace, skip excluded directories, and return the *shortest*
+    matching path so a deeply nested test fixture doesn't shadow the
+    project's canonical suite.
+
+    Returns ``None`` if no candidate is found.
+
+    The function is used by :func:`agents_md.validate.guess_agent_target`
+    to switch the generation prompt into ``extend_existing`` mode — when
+    the project already has a suite, the LLM is told to add cases to it
+    instead of producing a competing generic file.
+    """
+    if not workspace.exists() or not workspace.is_dir():
+        return None
+    candidates: list[Path] = []
+    for path in workspace.rglob("*.py"):
+        try:
+            rel_parts = path.relative_to(workspace).parts
+        except ValueError:
+            continue
+        if any(p in _EXISTING_SUITE_EXCLUDE for p in rel_parts):
+            continue
+        if not is_within(path, workspace):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # Cheap pre-filter: a file with no ``agentprdiff`` substring
+        # can't be a suite, and the AST parse below is expensive enough
+        # to be worth skipping. False positives (substring in a comment)
+        # are harmless because the AST check is authoritative.
+        if "agentprdiff" not in text:
+            continue
+        try:
+            tree = ast.parse(text)
+        except SyntaxError:
+            continue
+        if not _imports_agentprdiff(tree):
+            continue
+        if not _calls_suite_at_module_level(tree):
+            continue
+        candidates.append(path)
+    if not candidates:
+        return None
+    # Prefer the shortest path under the workspace; ties broken
+    # alphabetically for stability.
+    candidates.sort(key=lambda p: (len(p.parts), p.as_posix()))
+    return candidates[0]
 
 
 # ---------------------------------------------------------------------------
@@ -389,9 +710,9 @@ def validate_generated_imports(source: str) -> list[ImportDiagnostic]:
                         message=(
                             f"`from {module} import …` is invalid Python: "
                             f"the segment {bad!r} isn't a valid identifier. "
-                            "Use `importlib.util.spec_from_file_location` "
-                            "for paths that can't be expressed as a dotted "
-                            "import, or rename the directory."
+                            "Define an inline adapter function in the suite "
+                            "instead of importing from this path, or rename "
+                            "the directory so it becomes import-safe."
                         ),
                         statement=f"from {module} import …",
                     )
@@ -415,8 +736,9 @@ def validate_generated_imports(source: str) -> list[ImportDiagnostic]:
                             message=(
                                 f"`import {alias.name}` is invalid Python: "
                                 f"the segment {bad!r} isn't a valid "
-                                "identifier. Use dynamic loading or rename "
-                                "the directory."
+                                "identifier. Define an inline adapter "
+                                "function in the suite instead, or rename "
+                                "the directory so it becomes import-safe."
                             ),
                             statement=f"import {alias.name}",
                         )

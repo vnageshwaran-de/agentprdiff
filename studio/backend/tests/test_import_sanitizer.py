@@ -25,6 +25,9 @@ import pytest
 from agentprdiff_studio.agents_md.import_sanitizer import (
     classify_target,
     closest_safe_subpath,
+    detect_framework,
+    file_has_callable_agent,
+    find_existing_suite,
     is_valid_dotted_module,
     is_valid_identifier,
     is_within,
@@ -204,20 +207,37 @@ def test_classify_target_direct_for_clean_layout(tmp_path: Path) -> None:
     assert target.reason == ""
 
 
-def test_classify_target_dynamic_load_for_hyphenated_layout(tmp_path: Path) -> None:
-    """The fix: hyphenated path switches to spec_from_file_location."""
+def test_classify_target_adapter_for_hyphenated_layout(tmp_path: Path) -> None:
+    """Hyphenated path switches to the adapter strategy (no dynamic load)."""
     (tmp_path / "transcript-ingest-v2" / "cloud_function").mkdir(parents=True)
     target_file = tmp_path / "transcript-ingest-v2" / "cloud_function" / "main.py"
     target_file.write_text("def main(q): return q\n")
     target = classify_target(target_file, tmp_path, callable_name="main")
-    assert target.strategy == "dynamic_load"
+    assert target.strategy == "adapter"
     assert target.file_path == "transcript-ingest-v2/cloud_function/main.py"
     # The safe_identifier is the cleaned-up file stem — a valid Python name
-    # used as the label in spec_from_file_location.
+    # used inside the inline adapter and any documentation reference.
     assert target.safe_identifier is not None
     assert target.safe_identifier.isidentifier()
     # The reason should explain *why* — useful for the UI / logs.
     assert "hyphens" in target.reason.lower() or "identifier" in target.reason.lower()
+
+
+def test_classify_target_adapter_when_no_callable(tmp_path: Path) -> None:
+    """Even with an import-safe path, no top-level callable → adapter."""
+    (tmp_path / "app.py").write_text(
+        "from flask import Flask\napp = Flask(__name__)\n"
+    )
+    target = classify_target(
+        tmp_path / "app.py",
+        tmp_path,
+        has_callable=False,
+        framework="flask",
+    )
+    assert target.strategy == "adapter"
+    assert target.framework == "flask"
+    # The reason should call out the missing callable.
+    assert "callable" in target.reason.lower() or "shape" in target.reason.lower()
 
 
 def test_classify_target_scaffold_when_no_file(tmp_path: Path) -> None:
@@ -319,8 +339,8 @@ def test_validate_generated_imports_relative_imports_ok() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_guess_agent_target_with_hyphenated_dir_picks_dynamic_load(tmp_path: Path) -> None:
-    """End-to-end: the workspace probe handles a hyphenated layout."""
+def test_guess_agent_target_with_hyphenated_dir_picks_adapter(tmp_path: Path) -> None:
+    """End-to-end: a hyphenated layout becomes an adapter target."""
     pkg_dir = tmp_path / "transcript-ingest-v2" / "cloud_function"
     pkg_dir.mkdir(parents=True)
     (pkg_dir / "main.py").write_text(
@@ -333,10 +353,12 @@ def test_guess_agent_target_with_hyphenated_dir_picks_dynamic_load(tmp_path: Pat
     )
     target = guess_agent_target(tmp_path)
     assert target is not None
-    assert target.strategy == "dynamic_load"
+    assert target.strategy == "adapter"
     assert target.callable_name == "main"
     assert target.file_path == "transcript-ingest-v2/cloud_function/main.py"
     assert target.safe_identifier and target.safe_identifier.isidentifier()
+    # No existing suite in this workspace → existing_suite_path stays None.
+    assert target.existing_suite_path is None
 
 
 def test_guess_agent_target_with_clean_dir_picks_direct(tmp_path: Path) -> None:
@@ -386,3 +408,274 @@ def test_guess_agent_module_and_callable_still_returns_clean_pairs(tmp_path: Pat
     """Back-compat: clean projects still get the (module, callable) tuple."""
     (tmp_path / "agent.py").write_text("def run(q): return q\n")
     assert guess_agent_module_and_callable(tmp_path) == ("agent", "run")
+
+
+# ---------------------------------------------------------------------------
+# (7) Framework detection — drives the adapter prompt shape
+# ---------------------------------------------------------------------------
+
+
+def test_detect_framework_flask(tmp_path: Path) -> None:
+    f = tmp_path / "app.py"
+    f.write_text("from flask import Flask\napp = Flask(__name__)\n")
+    assert detect_framework(f) == "flask"
+
+
+def test_detect_framework_fastapi(tmp_path: Path) -> None:
+    f = tmp_path / "main.py"
+    f.write_text("from fastapi import FastAPI\napp = FastAPI()\n")
+    assert detect_framework(f) == "fastapi"
+
+
+def test_detect_framework_cloud_function(tmp_path: Path) -> None:
+    f = tmp_path / "main.py"
+    f.write_text(
+        textwrap.dedent(
+            """
+            import functions_framework
+
+            @functions_framework.http
+            def handler(request):
+                return "ok"
+            """
+        )
+    )
+    assert detect_framework(f) == "cloud_function"
+
+
+def test_detect_framework_cli(tmp_path: Path) -> None:
+    f = tmp_path / "cli.py"
+    f.write_text(
+        textwrap.dedent(
+            """
+            import click
+
+            @click.command()
+            def main():
+                click.echo("hi")
+            """
+        )
+    )
+    assert detect_framework(f) == "cli"
+
+
+def test_detect_framework_plain_module(tmp_path: Path) -> None:
+    f = tmp_path / "agent.py"
+    f.write_text("def run(q): return q\n")
+    assert detect_framework(f) == "module"
+
+
+def test_detect_framework_cloud_function_wins_over_flask(tmp_path: Path) -> None:
+    """A Cloud Function file that also imports Flask gets the more specific label."""
+    f = tmp_path / "main.py"
+    f.write_text(
+        "import functions_framework\nfrom flask import Request\n"
+    )
+    assert detect_framework(f) == "cloud_function"
+
+
+def test_detect_framework_unreadable_file_returns_module(tmp_path: Path) -> None:
+    # A path that doesn't exist falls through to the safe default.
+    assert detect_framework(tmp_path / "missing.py") == "module"
+
+
+# ---------------------------------------------------------------------------
+# (7) file_has_callable_agent — drives adapter selection
+# ---------------------------------------------------------------------------
+
+
+def test_file_has_callable_agent_def(tmp_path: Path) -> None:
+    f = tmp_path / "agent.py"
+    f.write_text("def run(q):\n    return q\n")
+    assert file_has_callable_agent(f) is True
+
+
+def test_file_has_callable_agent_async_def(tmp_path: Path) -> None:
+    f = tmp_path / "agent.py"
+    f.write_text("async def run(q):\n    return q\n")
+    assert file_has_callable_agent(f) is True
+
+
+def test_file_has_callable_agent_only_assignments(tmp_path: Path) -> None:
+    """Flask-style file: ``app = Flask(__name__)`` and no top-level def."""
+    f = tmp_path / "app.py"
+    f.write_text("from flask import Flask\napp = Flask(__name__)\n")
+    assert file_has_callable_agent(f) is False
+
+
+def test_file_has_callable_agent_decorated_handler(tmp_path: Path) -> None:
+    """A decorated function is still a function — should return True."""
+    f = tmp_path / "main.py"
+    f.write_text(
+        textwrap.dedent(
+            """
+            import functions_framework
+
+            @functions_framework.http
+            def handler(request):
+                return "ok"
+            """
+        )
+    )
+    assert file_has_callable_agent(f) is True
+
+
+# ---------------------------------------------------------------------------
+# (8) find_existing_suite — triggers extend_existing strategy
+# ---------------------------------------------------------------------------
+
+
+def test_find_existing_suite_returns_none_when_empty(tmp_path: Path) -> None:
+    assert find_existing_suite(tmp_path) is None
+
+
+def test_find_existing_suite_finds_module_level_suite(tmp_path: Path) -> None:
+    (tmp_path / "suites").mkdir()
+    suite_file = tmp_path / "suites" / "billing.py"
+    suite_file.write_text(
+        textwrap.dedent(
+            """
+            from agentprdiff import case, suite
+
+            def my_agent(q): return q
+
+            billing = suite(name="billing", agent=my_agent, cases=[])
+            """
+        )
+    )
+    found = find_existing_suite(tmp_path)
+    assert found == suite_file
+
+
+def test_find_existing_suite_requires_both_markers(tmp_path: Path) -> None:
+    """A file that imports agentprdiff but doesn't call suite() doesn't count."""
+    fake = tmp_path / "helpers.py"
+    fake.write_text("from agentprdiff import case  # no suite() call\n")
+    assert find_existing_suite(tmp_path) is None
+
+
+def test_find_existing_suite_prefers_shortest_path(tmp_path: Path) -> None:
+    """Two candidates → pick the shallower one (project canonical wins)."""
+    (tmp_path / "suites").mkdir()
+    deep = tmp_path / "suites" / "nested" / "deep" / "later.py"
+    deep.parent.mkdir(parents=True)
+    deep.write_text(
+        "from agentprdiff import suite\nsuite(name='deep', agent=None, cases=[])\n"
+    )
+    shallow = tmp_path / "suites" / "main.py"
+    shallow.write_text(
+        "from agentprdiff import suite\nsuite(name='main', agent=None, cases=[])\n"
+    )
+    assert find_existing_suite(tmp_path) == shallow
+
+
+def test_find_existing_suite_skips_excluded_directories(tmp_path: Path) -> None:
+    """``__pycache__`` / ``.studio-staging`` files don't count as suites."""
+    excluded = tmp_path / ".studio-staging" / "leftover.py"
+    excluded.parent.mkdir()
+    excluded.write_text(
+        "from agentprdiff import suite\nsuite(name='x', agent=None, cases=[])\n"
+    )
+    assert find_existing_suite(tmp_path) is None
+
+
+def test_find_existing_suite_ignores_non_python_files(tmp_path: Path) -> None:
+    docs = tmp_path / "README.md"
+    docs.write_text(
+        "Example: `from agentprdiff import suite` and `suite(name='x', ...)`\n"
+    )
+    assert find_existing_suite(tmp_path) is None
+
+
+# ---------------------------------------------------------------------------
+# (8) extend_existing flow through guess_agent_target
+# ---------------------------------------------------------------------------
+
+
+def test_guess_agent_target_picks_extend_existing_when_suite_present(
+    tmp_path: Path,
+) -> None:
+    """The presence of an existing suite forces extend_existing strategy."""
+    (tmp_path / "agent.py").write_text("def run(q): return q\n")
+    suites_dir = tmp_path / "suites"
+    suites_dir.mkdir()
+    existing = suites_dir / "billing.py"
+    existing.write_text(
+        textwrap.dedent(
+            """
+            from agentprdiff import case, suite
+            from agent import run as my_agent
+
+            billing = suite(name="billing", agent=my_agent, cases=[])
+            """
+        )
+    )
+    target = guess_agent_target(tmp_path)
+    assert target is not None
+    assert target.strategy == "extend_existing"
+    assert target.existing_suite_path == "suites/billing.py"
+    # Base fields are still populated for prompt context.
+    assert target.callable_name == "run"
+
+
+def test_guess_agent_target_extend_existing_without_agent_file(
+    tmp_path: Path,
+) -> None:
+    """Existing suite + no agent file → still extend_existing, scaffold base."""
+    suites_dir = tmp_path / "suites"
+    suites_dir.mkdir()
+    existing = suites_dir / "stub.py"
+    existing.write_text(
+        "from agentprdiff import suite\n"
+        "def my_agent(q): return q\n"
+        "stub = suite(name='stub', agent=my_agent, cases=[])\n"
+    )
+    target = guess_agent_target(tmp_path)
+    assert target is not None
+    assert target.strategy == "extend_existing"
+    assert target.existing_suite_path == "suites/stub.py"
+
+
+def test_guess_agent_target_hyphenated_dir_with_flask_app_returns_adapter(
+    tmp_path: Path,
+) -> None:
+    """A Flask app under a hyphenated dir → adapter with framework=flask.
+
+    The unsafe path forces ``adapter`` even though the file does expose
+    a callable; the framework label tells the prompt to scaffold a Flask
+    test-client adapter rather than a plain function call.
+    """
+    svc = tmp_path / "ingest-svc"
+    svc.mkdir()
+    (svc / "main.py").write_text(
+        textwrap.dedent(
+            """
+            from flask import Flask
+            app = Flask(__name__)
+
+            def main(q):
+                return q
+            """
+        )
+    )
+    target = guess_agent_target(tmp_path)
+    assert target is not None
+    assert target.strategy == "adapter"
+    assert target.framework == "flask"
+    assert target.file_path == "ingest-svc/main.py"
+
+
+def test_classify_target_records_framework_on_direct(tmp_path: Path) -> None:
+    """Framework label propagates through to direct targets too."""
+    (tmp_path / "agent.py").write_text(
+        "from flask import Flask\napp = Flask(__name__)\ndef run(q): return q\n"
+    )
+    target = classify_target(
+        tmp_path / "agent.py",
+        tmp_path,
+        callable_name="run",
+        has_callable=True,
+        framework="flask",
+    )
+    assert target.strategy == "direct"
+    assert target.framework == "flask"

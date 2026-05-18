@@ -30,11 +30,15 @@ import sys
 import tempfile
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from dataclasses import replace as _dc_replace
 from pathlib import Path
 
 from .import_sanitizer import (
     GenerationTarget,
     classify_target,
+    detect_framework,
+    file_has_callable_agent,
+    find_existing_suite,
     is_within,
     path_to_module,
     validate_generated_imports,
@@ -368,21 +372,71 @@ def guess_agent_target(workspace: Path) -> GenerationTarget | None:
     Returns a :class:`~.import_sanitizer.GenerationTarget` whose
     ``strategy`` field directs the suite-generation prompt:
 
-    * ``"direct"``       — emit ``from {module} import {callable}``
-    * ``"dynamic_load"`` — emit ``importlib.util.spec_from_file_location(...)``
-                            because the file path has hyphens / dots / leading
-                            digits and can't be expressed as a dotted import
-    * ``"scaffold"``     — no agent module found at all; the prompt should
-                            generate a stub with ``TODO`` markers
+    * ``"direct"``           — emit ``from {module} import {callable}``
+                                because the path is import-safe and a
+                                callable agent function exists.
+    * ``"adapter"``           — emit an *inline* ``def my_agent(query)``
+                                wrapper in the suite. Picked when the path
+                                isn't import-safe (hyphens, leading digits,
+                                etc.) OR the file is a service/app shape
+                                with no top-level callable. We never emit
+                                ``importlib.util.spec_from_file_location``
+                                from a guessed path.
+    * ``"extend_existing"``   — the workspace already has a discoverable
+                                agentprdiff suite. The prompt should add
+                                cases to it instead of producing a new
+                                generic one.
+    * ``"scaffold"``          — no agent file found at all; the prompt
+                                should produce a stub with ``TODO`` markers.
 
-    Returns ``None`` *only* when no candidate file was found anywhere in
-    the workspace; the "found but path is unsafe" case becomes a
-    ``dynamic_load`` target.
+    Returns ``None`` *only* when no candidate file was found AND no
+    existing suite was found — the caller will scaffold from scratch.
+
+    Detection order:
+
+    1. ``find_existing_suite(workspace)`` — if a suite exists, return an
+       ``extend_existing`` target. The base classification still runs so
+       the prompt has framework / callable / module context.
+    2. ``_pick_module_file(workspace)`` — locate the agent module.
+    3. :func:`~.import_sanitizer.detect_framework` and
+       :func:`~.import_sanitizer.file_has_callable_agent` — decide whether
+       a direct dotted import is even appropriate.
+    4. :func:`~.import_sanitizer.classify_target` — resolve to one of
+       ``direct`` / ``adapter`` / ``scaffold``.
     """
     file_path = _pick_module_file(workspace)
-    if file_path is None:
-        log.info("guess_agent_target: no candidate file found under %s", workspace)
+    existing_suite = find_existing_suite(workspace)
+
+    if file_path is None and existing_suite is None:
+        log.info(
+            "guess_agent_target: no candidate file or existing suite under %s",
+            workspace,
+        )
         return None
+
+    if file_path is None:
+        # No agent module, but a suite already exists — the prompt can
+        # still extend it (e.g. add edge-case coverage referencing the
+        # existing wiring). Use a scaffold base so unknown fields stay
+        # empty, then layer ``extend_existing`` on top.
+        base = GenerationTarget(
+            strategy="scaffold",
+            callable_name="run",
+            reason=(
+                "no agent module detected but an existing agentprdiff "
+                "suite was found; extending that suite"
+            ),
+        )
+        rel = existing_suite.relative_to(workspace).as_posix()
+        target = _dc_replace(
+            base, strategy="extend_existing", existing_suite_path=rel
+        )
+        log.info(
+            "guess_agent_target: strategy=extend_existing (no agent file)"
+            " existing_suite=%s",
+            rel,
+        )
+        return target
 
     callable_name = _pick_callable(file_path) or "run"
 
@@ -407,13 +461,32 @@ def guess_agent_target(workspace: Path) -> GenerationTarget | None:
                 callable_name = sib_callable
                 break
 
-    target = classify_target(file_path, workspace, callable_name=callable_name)
+    framework = detect_framework(file_path)
+    has_callable = file_has_callable_agent(file_path)
+
+    target = classify_target(
+        file_path,
+        workspace,
+        callable_name=callable_name,
+        has_callable=has_callable,
+        framework=framework,
+    )
+
+    if existing_suite is not None:
+        rel = existing_suite.relative_to(workspace).as_posix()
+        target = _dc_replace(
+            target, strategy="extend_existing", existing_suite_path=rel
+        )
+
     log.info(
-        "guess_agent_target: strategy=%s callable=%s module=%s file=%s%s",
+        "guess_agent_target: strategy=%s callable=%s module=%s file=%s "
+        "framework=%s existing_suite=%s%s",
         target.strategy,
         target.callable_name,
         target.module,
         target.file_path,
+        target.framework,
+        target.existing_suite_path,
         f" reason={target.reason!r}" if target.reason else "",
     )
     return target
@@ -489,7 +562,7 @@ def _pick_module(workspace: Path) -> str | None:
         # callers that need a fallback strategy use guess_agent_target.
         log.info(
             "agent file %s is under workspace but path isn't import-safe; "
-            "callers should switch to dynamic_load strategy",
+            "callers should switch to the adapter strategy (inline wrapper)",
             file_path.relative_to(workspace),
         )
         return None

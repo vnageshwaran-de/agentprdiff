@@ -315,17 +315,36 @@ _SYSTEM_PROMPT = (
     "only these names: contains, contains_any, regex_match, tool_called, "
     "tool_sequence, no_tool_called, output_length_lt, latency_lt_ms, "
     "cost_lt_usd, semantic — do NOT invent graders;\n"
-    "  • imports the agent under test using the strategy the user message "
-    "specifies. When strategy=direct, use `from <module> import <callable> "
-    "as my_agent`. When strategy=dynamic_load, use "
-    "`importlib.util.spec_from_file_location` because the path contains "
-    "characters (hyphens, leading digits, dots) that aren't valid in "
-    "Python identifiers. When strategy=scaffold, leave a TODO comment and "
-    "a placeholder `def my_agent(query): ...` — DO NOT invent an import.\n"
+    "  • references the agent under test using the strategy the user "
+    "message specifies. The four strategies are:\n"
+    "      - direct: emit `from <module> import <callable> as my_agent`. "
+    "Only use this when the user message says strategy=direct.\n"
+    "      - adapter: the user message says the path isn't import-safe "
+    "OR the target file is a service/app with no callable agent. Define "
+    "an INLINE `def my_agent(query): ...` adapter function in the suite "
+    "file itself, with a clear TODO that points at the target file. "
+    "Frameworks have known shapes (Flask test client, FastAPI test "
+    "client, Cloud Function HTTP handler, CLI runner, plain function "
+    "call) — the user message will tell you which one to scaffold.\n"
+    "      - extend_existing: the user message includes the contents of "
+    "an existing agentprdiff suite file. Return the FULL updated file "
+    "with new cases APPENDED to the existing `cases=[...]` list. Do not "
+    "rewrite the existing imports, the existing agent reference, or any "
+    "existing case. Preserve docstrings, blank lines, and comments. "
+    "Add ONLY the new cases the user asks for.\n"
+    "      - scaffold: emit a placeholder `def my_agent(query): ...` "
+    "with a TODO. DO NOT invent an import.\n"
+    "  • HARD RULE: do NOT generate "
+    "`importlib.util.spec_from_file_location` calls. We never load "
+    "Python modules from guessed file paths — the adapter strategy is "
+    "the correct alternative.\n"
     "  • EVERY `from X import Y` and `import X` statement must use only "
     "valid Python identifiers in X. NEVER emit a hyphen, leading digit, "
     "dot-in-segment, or non-ASCII character inside a module path — "
     "`from my-service.foo import bar` is a SYNTAX ERROR.\n"
+    "  • All file references in TODOs, comments, and docstrings must "
+    "stay inside the selected project root. Do not invent absolute "
+    "paths or parent-directory references (`../`).\n"
     "  • call every grader with its required arguments — e.g. "
     "`no_tool_called(\"send_email\")` not `no_tool_called()`;\n"
     "  • binds one or more module-level Suite objects via `suite(...)`;\n"
@@ -354,8 +373,107 @@ _SYSTEM_PROMPT = (
     "\n"
     "The dossier matters as much as the Python — reviewers read it on PRs "
     "to decide whether a diff is a real regression or an intentional change. "
-    "Do not include any extra sections beyond the per-case blocks.\n"
+    "Do not include any extra sections beyond the per-case blocks. When "
+    "strategy=extend_existing, write dossier entries ONLY for the cases "
+    "you just added; do not re-document existing cases.\n"
 )
+
+
+# Per-framework adapter sketches the LLM should expand. Each value is a
+# copy-pasteable hint embedded in the user prompt — the LLM fills in real
+# tool names, real expected outputs, etc. Generic on purpose: no project
+# names, no hardcoded routes. The TODO comment carries the in-repo file
+# reference so the human reader knows what to wire up.
+_ADAPTER_SKETCH: dict[str, str] = {
+    "flask": (
+        "      # TODO: import your Flask app object. The path below is "
+        "informational — wire it to the real import path inside the project root.\n"
+        "      # from your_package import app  # noqa: E402\n"
+        "      def my_agent(query: str) -> str:\n"
+        "          client = app.test_client()\n"
+        "          resp = client.post(\"/your-endpoint\", json={\"query\": query})\n"
+        "          return resp.get_data(as_text=True)\n"
+    ),
+    "fastapi": (
+        "      # TODO: import your FastAPI app object. The path below is "
+        "informational — wire it to the real import path inside the project root.\n"
+        "      # from your_package import app  # noqa: E402\n"
+        "      from fastapi.testclient import TestClient\n"
+        "      def my_agent(query: str) -> str:\n"
+        "          with TestClient(app) as client:\n"
+        "              resp = client.post(\"/your-endpoint\", json={\"query\": query})\n"
+        "              return resp.text\n"
+    ),
+    "cloud_function": (
+        "      # TODO: import the HTTP handler from the target file via a "
+        "RENAMED, import-safe path; do not invent a path with hyphens.\n"
+        "      # from your_package.handlers import handler  # noqa: E402\n"
+        "      from werkzeug.test import EnvironBuilder\n"
+        "      from werkzeug.wrappers import Request\n"
+        "      def my_agent(query: str) -> str:\n"
+        "          env = EnvironBuilder(method=\"POST\", json={\"query\": query}).get_environ()\n"
+        "          request = Request(env)\n"
+        "          response = handler(request)\n"
+        "          return response if isinstance(response, str) else response.get_data(as_text=True)\n"
+    ),
+    "cli": (
+        "      # TODO: replace this with your CLI entry point. Prefer "
+        "Click's CliRunner when available so the test stays in-process.\n"
+        "      # from your_package.cli import main  # noqa: E402\n"
+        "      def my_agent(query: str) -> str:\n"
+        "          # If using Click: from click.testing import CliRunner; "
+        "result = CliRunner().invoke(main, [query]); return result.output\n"
+        "          raise NotImplementedError(\"wire this to your CLI entry point\")\n"
+    ),
+    "module": (
+        "      # TODO: import the real callable from your project package "
+        "(NOT from the hyphenated path) and forward the query to it.\n"
+        "      # from your_package.module import the_callable  # noqa: E402\n"
+        "      def my_agent(query: str) -> str:\n"
+        "          # return the_callable(query)\n"
+        "          raise NotImplementedError(\"wire this to your agent\")\n"
+    ),
+}
+
+
+def _adapter_block(
+    *,
+    framework: str | None,
+    target_file_path: str | None,
+    target_reason: str,
+    agent_function_name: str,
+) -> str:
+    """Build the per-framework ``adapter`` strategy block for the user prompt.
+
+    Generic — no project names, no fixed paths. The sketch shows the
+    shape of the inline ``my_agent`` adapter; the LLM customises it
+    against the deep-scan source.
+    """
+    fw = (framework or "module").lower()
+    sketch = _ADAPTER_SKETCH.get(fw, _ADAPTER_SKETCH["module"])
+    file_label = target_file_path or "<no file>"
+    callable_hint = (
+        f"  • Discovered callable in the target file (if any): "
+        f"{agent_function_name!r}. Use it from inside the adapter — do "
+        "NOT import it from a hyphenated or otherwise unsafe path.\n"
+    )
+    return (
+        f"Strategy: adapter (framework={fw}).\n"
+        f"  • Reason: {target_reason or 'inline adapter required.'}\n"
+        f"  • Target file (for the TODO comment, in-repo reference only): "
+        f"{file_label!r}\n"
+        f"{callable_hint}"
+        "  • Define an INLINE adapter function in the generated suite. "
+        "Do not import the agent from a guessed file path. The adapter "
+        "lives at module top level of the suite file:\n\n"
+        f"{sketch}\n"
+        "  • Then build the suite around `my_agent` exactly as you would "
+        "for a normal callable. The grader assertions test what the "
+        "adapter returns.\n"
+        "  • Hard rule: do NOT call `importlib.util.spec_from_file_location` "
+        "or any other dynamic loader. The adapter is the only sanctioned "
+        "way to drive a service/app target.\n"
+    )
 
 
 def _user_prompt(
@@ -370,6 +488,9 @@ def _user_prompt(
     target_file_path: str | None = None,
     target_safe_identifier: str | None = None,
     target_reason: str = "",
+    target_framework: str | None = None,
+    existing_suite_path: str | None = None,
+    existing_suite_content: str | None = None,
 ) -> str:
     # The "how to reference the agent" block adapts to the detected
     # strategy so the LLM gets explicit, copy-pasteable code shape for
@@ -385,33 +506,47 @@ def _user_prompt(
             "          raise NotImplementedError(\"wire this to your agent\")\n"
             "    Then write the suite around `my_agent` as if it were real.\n"
         )
-    elif target_strategy == "dynamic_load":
-        # Hyphens / leading digits / dots in directory names — can't be
-        # reached via a dotted import. Use spec_from_file_location, which
-        # is the standard library's escape hatch.
-        safe_ident = target_safe_identifier or "_agent_module"
+    elif target_strategy == "adapter":
+        agent_block = _adapter_block(
+            framework=target_framework,
+            target_file_path=target_file_path,
+            target_reason=target_reason,
+            agent_function_name=agent_function_name,
+        )
+    elif target_strategy == "extend_existing":
+        # The LLM is given the full existing suite verbatim and asked to
+        # produce an updated full file with new cases appended. We do NOT
+        # ask for a diff — diffs are harder to parse safely than a whole
+        # file, and `discover_suites` consumes whole files anyway.
+        existing_body = (existing_suite_content or "").rstrip()
         agent_block = (
-            "Strategy: dynamic_load (path is not import-safe as a dotted "
-            "module).\n"
-            f"  • Reason: {target_reason or 'path contains non-identifier characters.'}\n"
-            f"  • Target file (relative to suite file): {target_file_path!r}\n"
-            f"  • Callable name inside that module: {agent_function_name!r}\n"
-            "  • Use exactly this loader pattern at module top level "
-            "(adjust the relative path if the suite ends up in a "
-            "subdirectory):\n\n"
-            "      import importlib.util\n"
-            "      from pathlib import Path\n\n"
-            "      _AGENT_FILE = Path(__file__).resolve().parent / "
-            f"{target_file_path!r}\n"
-            f"      _spec = importlib.util.spec_from_file_location("
-            f"{safe_ident!r}, _AGENT_FILE)\n"
-            f"      _module = importlib.util.module_from_spec(_spec)\n"
-            f"      _spec.loader.exec_module(_module)\n"
-            f"      my_agent = _module.{agent_function_name}\n\n"
-            "  • Do NOT emit a `from <path-with-hyphens> import …` line. "
-            "That's a Python syntax error.\n"
+            "Strategy: extend_existing (an agentprdiff suite already lives "
+            "in this workspace).\n"
+            f"  • Existing suite file (relative to workspace): "
+            f"{existing_suite_path!r}\n"
+            "  • Return the FULL updated suite file. Do NOT rewrite the "
+            "existing imports, the agent reference, or any case that is "
+            "already present. Preserve every existing line — comments, "
+            "blank lines, docstrings — verbatim.\n"
+            "  • APPEND new `case(...)` entries to the existing "
+            "`cases=[...]` list. The user request below describes what to add.\n"
+            "  • Keep the same `suite(name=...)` and the same agent "
+            "reference. Do NOT create a second suite object.\n"
+            "  • If the user asks for new graders that the existing file "
+            "doesn't already import, add the import at the top alongside "
+            "the existing grader imports — same module, valid identifier.\n"
+            "\n"
+            "--- existing suite file ---\n"
+            f"{existing_body}\n"
+            "--- end existing suite file ---\n"
         )
     else:  # direct
+        framework_hint = (
+            f"  • Framework detected: {target_framework}. The agent is "
+            "imported directly; no adapter needed.\n"
+            if target_framework and target_framework != "module"
+            else ""
+        )
         agent_block = (
             "Strategy: direct (dotted import is safe).\n"
             f"  • Use exactly this import: `from {agent_import_target} "
@@ -420,6 +555,7 @@ def _user_prompt(
             "rename it.\n"
             f"  • {agent_function_name} is the existing callable name — "
             "do NOT invent a different one.\n"
+            f"{framework_hint}"
         )
 
     body = (
@@ -665,12 +801,14 @@ async def generate_suite(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     # Auto-detect the agent module + entrypoint callable + the right
-    # generation strategy (direct dotted import vs. dynamic load via
-    # spec_from_file_location vs. scaffold-with-TODO). The strategy
+    # generation strategy (direct dotted import vs. adapter inline
+    # wrapper vs. extend-existing vs. scaffold-with-TODO). The strategy
     # is what protects us against hyphenated directory names: when the
     # path can't be expressed as a valid Python identifier chain, we
-    # tell the LLM to switch to dynamic loading instead of inventing
-    # an invalid `from foo-bar import …`.
+    # tell the LLM to define an inline adapter instead of inventing
+    # an invalid `from foo-bar import …`. We do NOT generate
+    # ``importlib.util.spec_from_file_location`` calls from guessed
+    # paths.
     workspace = (
         Path(project.workspace_path)
         if project.workspace_path and project.intake_mode in ("git", "zip")
@@ -682,6 +820,9 @@ async def generate_suite(
     target_file_path: str | None = None
     target_safe_identifier: str | None = None
     target_reason = ""
+    target_framework: str | None = None
+    existing_suite_path: str | None = None
+    existing_suite_content: str | None = None
     if workspace is not None:
         detected_target = guess_agent_target(workspace)
         if detected_target is not None:
@@ -690,13 +831,49 @@ async def generate_suite(
             target_file_path = detected_target.file_path
             target_safe_identifier = detected_target.safe_identifier
             target_reason = detected_target.reason
+            target_framework = detected_target.framework
+            existing_suite_path = detected_target.existing_suite_path
             # Module-level override only happens for direct strategy.
-            # For dynamic_load we deliberately leave agent_target alone
-            # (the prompt uses target_file_path) since there's no safe
-            # dotted name to put in the import line.
-            if detected_target.strategy == "direct" and agent_target == "agent":
-                if detected_target.module:
-                    agent_target = detected_target.module
+            # For adapter / extend_existing / scaffold we leave the
+            # configured agent_target alone — the prompt drives those
+            # strategies through their own fields.
+            if (
+                detected_target.strategy == "direct"
+                and agent_target == "agent"
+                and detected_target.module
+            ):
+                agent_target = detected_target.module
+            # extend_existing: load the existing suite file content so
+            # the LLM can append cases without rewriting anything.
+            if existing_suite_path:
+                existing_full_path = workspace / existing_suite_path
+                # Scope guardrail: only read if the resolved path is
+                # actually under the workspace. This is paranoid given
+                # the path came from our own walk, but keeps the rule
+                # symmetric with the deep-scan path check.
+                try:
+                    from ..agents_md.import_sanitizer import (
+                        is_within as _is_within,
+                    )
+                    if _is_within(existing_full_path, workspace):
+                        existing_suite_content = existing_full_path.read_text(
+                            encoding="utf-8", errors="replace"
+                        )
+                except OSError:
+                    log.warning(
+                        "extend_existing: could not read %s; falling back "
+                        "to non-extend strategy",
+                        existing_full_path,
+                    )
+                    # If the file vanished between detection and read,
+                    # drop back to the base classification rather than
+                    # invent contents the LLM would extend.
+                    existing_suite_path = None
+                    target_strategy = (
+                        "adapter"
+                        if target_file_path is not None and detected_target.framework
+                        else "scaffold"
+                    )
         else:
             # No candidate file at all → scaffold fallback.
             target_strategy = "scaffold"
@@ -723,6 +900,9 @@ async def generate_suite(
         target_file_path=target_file_path,
         target_safe_identifier=target_safe_identifier,
         target_reason=target_reason,
+        target_framework=target_framework,
+        existing_suite_path=existing_suite_path,
+        existing_suite_content=existing_suite_content,
     )
 
     try:
