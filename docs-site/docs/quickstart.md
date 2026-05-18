@@ -17,7 +17,7 @@ Both paths produce the same files and the same green CI gate. Path A is faster a
 
 ---
 
-## Path A — Let an AI agent adopt the package for you (recommended)
+## Path A — Let an AI agent adopt the package for you (recommended) { #path-a }
 
 The killer feature most people miss: **you don't write the suite by hand.**
 `agentprdiff` ships an [`AGENTS.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/AGENTS.md)
@@ -133,7 +133,7 @@ just much faster, with case suggestions you might not have thought of.
 
 ---
 
-## Path B — Write the suite yourself
+## Path B — Write the suite yourself { #path-b }
 
 If you don't have an AI assistant handy, or you want to learn the shape
 of a suite before delegating it, here's the by-hand version.

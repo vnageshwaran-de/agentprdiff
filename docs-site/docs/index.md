@@ -109,15 +109,14 @@ The path through the system on a single CLI invocation is:
 ## The fastest adoption path
 
 Open Claude Code, Cursor, Aider, or any agentic IDE in your project and
-paste the [recommended adoption prompt](./quickstart.md#path-a--let-an-ai-agent-adopt-the-package-for-you-recommended).
+paste the [recommended adoption prompt](./quickstart.md#path-a).
 The assistant reads `AGENTS.md`, finds your production agent, asks you
 to confirm 5-10 case contracts, and writes the entire suite + CI
 workflow. You stay in the loop for two checkpoints (~3 minutes of
 review). Total time: ~15-20 minutes from `pip install` to green CI.
 
 If you'd rather hand-write the suite, the same Quickstart has a
-[manual path](./quickstart.md#path-b--write-the-suite-yourself) that
-walks through every file.
+[manual path](./quickstart.md#path-b) that walks through every file.
 
 ## Where to next
 

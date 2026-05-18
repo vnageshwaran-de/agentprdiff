@@ -2,7 +2,7 @@
 
 **Guard your LLM agents in CI.** Snapshot tests that catch behavioral regressions when models, prompts, or vendors change.
 
-📚 **[Documentation: agentprdiff.dev](https://agentprdiff.dev/)** &nbsp;·&nbsp; ⚡ [Quickstart](https://agentprdiff.dev/quickstart/) &nbsp;·&nbsp; 🤖 [AI-agent adoption](https://agentprdiff.dev/quickstart/#path-a--let-an-ai-agent-adopt-the-package-for-you-recommended) &nbsp;·&nbsp; 📦 [PyPI](https://pypi.org/project/agentprdiff/)
+📚 **[Documentation: agentprdiff.dev](https://agentprdiff.dev/)** &nbsp;·&nbsp; ⚡ [Quickstart](https://agentprdiff.dev/quickstart/) &nbsp;·&nbsp; 🤖 [AI-agent adoption](https://agentprdiff.dev/quickstart/#path-a) &nbsp;·&nbsp; 📦 [PyPI](https://pypi.org/project/agentprdiff/)
 
 > You upgraded Claude. You tweaked a system prompt. You swapped `gpt-4o` for `gpt-4o-mini` in the cheap path. Which of your agent's behaviors just changed? `agentprdiff` tells you — before the PR merges.
 
