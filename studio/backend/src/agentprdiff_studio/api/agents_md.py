@@ -30,6 +30,7 @@ from ..agents_md import (
     starter_agents_md,
     suite_python_skeleton,
 )
+from ..agents_md.preflight import ErrorCode, run_preflight
 from ..agents_md.templates import http_suite_definition
 from ..agents_md.validate import (
     guess_agent_module_and_callable,
@@ -244,6 +245,21 @@ class GenerateSuiteIn(BaseModel):
     # instead of generic patterns from the playbook. Off by default to keep
     # default token usage cheap.
     deep_scan: bool = False
+    # When true, expand the deep scan past the workspace root into the
+    # parent directory — picks up sibling repositories that live next
+    # to the selected project. Off by default; the brief calls this
+    # out as an explicit user opt-in so we never quietly pull source
+    # from outside the selected scope.
+    scan_include_parent: bool = False
+    # When true and the preflight import_load stage fails with
+    # ``APD_PREFLIGHT_MODULE_NOT_FOUND``, Studio spins up an *ephemeral*
+    # venv under /tmp, installs the missing package + the engine into it,
+    # and re-runs preflight against that venv. The temp venv is torn
+    # down before the response returns — this is a *preview* feature,
+    # not a substitute for adding the package to your manifest. The UI
+    # labels the result as "preview venv" so the user knows the fix is
+    # non-persistent.
+    auto_install_preview: bool = False
 
 
 class GenerateSuiteOut(BaseModel):
@@ -279,6 +295,30 @@ class GenerateSuiteOut(BaseModel):
     # Useful for the UI to surface "scanned 6 files (28 KB)" so the user
     # knows the LLM had real context to work from.
     deep_scan_files: list[dict] = []
+
+    # ---- Hardened preflight + scan-manifest fields ------------------
+    # ``preflight_ok`` is the *only* signal the UI should use to render
+    # "generation succeeded". ``compiles`` and ``loadable`` are kept for
+    # back-compat with existing dashboards.
+    preflight_ok: bool = False
+    # Stage-by-stage breakdown: name, status, duration_ms, diagnostics.
+    preflight_stages: list[dict] = []
+    # First error code across all stages (in stage order). ``None`` when
+    # everything passed. Stable across releases — see :class:`ErrorCode`.
+    error_code: str | None = None
+    # The generation strategy Studio picked (direct / adapter /
+    # extend_existing / scaffold). Exposed so the UI can show a chip and
+    # the user can spot mis-detections.
+    strategy: str = "direct"
+    # Detected framework label when known (flask / fastapi / cloud_function /
+    # cli / module). ``None`` for scaffold or HTTP-mode.
+    framework: str | None = None
+    # Scan manifest: lets the UI tell the user exactly which files were
+    # read into the LLM context, the root that bounded the scan, and
+    # whether sibling repositories were opted in.
+    scan_manifest: dict | None = None
+    # True if preflight retried inside an ephemeral venv (auto_install_preview).
+    preview_venv_used: bool = False
 
 
 class SaveGeneratedIn(BaseModel):
@@ -602,8 +642,11 @@ _DEEP_SCAN_PER_FILE_CAP = 12_000
 
 
 def _deep_scan_workspace(
-    workspace: Path, agent_import_target: str
-) -> tuple[str, list[dict]]:
+    workspace: Path,
+    agent_import_target: str,
+    *,
+    include_parent: bool = False,
+) -> tuple[str, dict]:
     """Walk the workspace and concatenate the most relevant source files.
 
     Priority order:
@@ -614,22 +657,47 @@ def _deep_scan_workspace(
 
     Each file is read up to ``_DEEP_SCAN_PER_FILE_CAP`` bytes; the total
     budget is ``_DEEP_SCAN_BYTE_BUDGET``. Returns the concatenated context
-    string plus a manifest of ``[{path, bytes}]`` for the UI.
+    string plus a structured scan manifest::
 
-    Scope guarantee: every file is verified to live under ``workspace``
-    via :func:`agents_md.import_sanitizer.is_within` (which resolves
-    symlinks), so a symlink that points outside the selected root never
-    smuggles its content into the LLM context. The selected root + the
-    files we ultimately ship are logged for traceability.
+        {
+            "root": "/abs/path/to/scan/root",
+            "sibling_repos_included": bool,
+            "files": [{"path": "relative/path", "bytes": int}, ...],
+            "total_bytes": int,
+            "rejected": [{"path": "...", "reason": "..."}],
+        }
+
+    Scope guarantee: every file is verified to live under the *scan
+    root* via :func:`agents_md.import_sanitizer.is_within` (which
+    resolves symlinks), so a symlink that points outside the selected
+    root never smuggles its content into the LLM context. Sibling
+    repositories are excluded unless ``include_parent=True`` —
+    explicit opt-in only. The scan root + opted-in flag are logged for
+    traceability.
     """
     from ..agents_md.import_sanitizer import is_within
 
     if not workspace.exists() or not workspace.is_dir():
-        log.info("deep_scan: workspace %s missing or not a directory", workspace)
-        return "", []
+        log.info(
+            "deep_scan: workspace=%s status=missing_or_not_dir", workspace
+        )
+        return "", {
+            "root": str(workspace),
+            "sibling_repos_included": False,
+            "files": [],
+            "total_bytes": 0,
+            "rejected": [],
+        }
     # Resolve once so all subsequent is_within checks use the canonical
     # path (handles symlinked workspaces, ``~`` in env, etc.).
     workspace_resolved = workspace.resolve()
+    # Sibling repos opt-in: the *scan root* becomes the parent directory.
+    # Everything else (per-file is_within check, exclude list) is the
+    # same — we just expand the boundary. We deliberately do NOT walk
+    # multiple levels up; that would be too easy to misuse.
+    scan_root = (
+        workspace_resolved.parent if include_parent else workspace_resolved
+    )
 
     # Step 1: locate the agent module's actual file on disk by walking the
     # dotted import target. We do a best-effort match — the user's project
@@ -683,25 +751,42 @@ def _deep_scan_workspace(
                 ordered.append(f)
 
     chunks: list[str] = []
-    manifest: list[dict] = []
+    files: list[dict] = []
+    rejected: list[dict] = []
     budget = _DEEP_SCAN_BYTE_BUDGET
 
     for f in ordered:
         if budget <= 0:
             break
         # Skip files in excluded directories (rglob() can hit .git/ etc).
-        if any(part in _DEEP_SCAN_EXCLUDE_PARTS for part in f.relative_to(workspace).parts):
+        try:
+            rel_to_root = f.relative_to(scan_root)
+        except ValueError:
+            # ``f`` came from a candidate-bucket build that's keyed on
+            # workspace; if include_parent=True and the file is outside
+            # the scan_root branch we just skip it.
+            rejected.append({
+                "path": str(f),
+                "reason": "outside-scan-root",
+            })
+            continue
+        if any(part in _DEEP_SCAN_EXCLUDE_PARTS for part in rel_to_root.parts):
             continue
         # Scope guardrail: resolve every candidate and reject anything
-        # whose resolved location escapes ``workspace`` (e.g. a symlink
+        # whose resolved location escapes the *scan root* (e.g. a symlink
         # that points to /etc/passwd). This is paranoid — rglob() shouldn't
-        # surface paths outside the workspace by itself — but the cost is
+        # surface paths outside the scan root by itself — but the cost is
         # one resolve() per file and the safety property is worth it.
-        if not is_within(f, workspace_resolved):
+        if not is_within(f, scan_root):
             log.warning(
-                "deep_scan: rejecting %s — resolves outside workspace %s",
-                f, workspace_resolved,
+                "deep_scan: rejecting=%s reason=outside-root scan_root=%s",
+                f,
+                scan_root,
             )
+            rejected.append({
+                "path": str(f),
+                "reason": "outside-scan-root",
+            })
             continue
         try:
             raw = f.read_text(encoding="utf-8", errors="replace")
@@ -714,16 +799,26 @@ def _deep_scan_workspace(
         # Cap to remaining budget too.
         if len(text) > budget:
             text = text[:budget] + "\n# … (budget-truncated)"
-        rel = f.relative_to(workspace).as_posix()
+        rel = rel_to_root.as_posix()
         chunks.append(f"# === file: {rel} ===\n{text}")
-        manifest.append({"path": rel, "bytes": len(text.encode("utf-8"))})
+        files.append({"path": rel, "bytes": len(text.encode("utf-8"))})
         budget -= len(text)
 
+    total_bytes = sum(int(f["bytes"]) for f in files)
+    manifest = {
+        "root": str(scan_root),
+        "sibling_repos_included": include_parent,
+        "files": files,
+        "total_bytes": total_bytes,
+        "rejected": rejected,
+    }
     log.info(
-        "deep_scan: root=%s files=%d bytes=%d",
-        workspace_resolved,
-        len(manifest),
-        sum(int(m["bytes"]) for m in manifest),
+        "deep_scan: scan_root=%s sibling_repos=%s files=%d bytes=%d rejected=%d",
+        scan_root,
+        include_parent,
+        len(files),
+        total_bytes,
+        len(rejected),
     )
     return "\n\n".join(chunks), manifest
 
@@ -881,13 +976,28 @@ async def generate_suite(
 
     # Deep-scan: read the agent module + siblings + tools + README into the
     # LLM context so cases reference real code, not just the playbook. Only
-    # meaningful for git/zip projects (HTTP-mode has no workspace).
+    # meaningful for git/zip projects (HTTP-mode has no workspace). The
+    # scan manifest carries the resolved scan root and the explicit
+    # sibling-opt-in flag so the UI can render exactly what was read.
     workspace_context = ""
+    scan_manifest: dict | None = None
     deep_scan_files: list[dict] = []
     if payload.deep_scan and workspace is not None:
-        workspace_context, deep_scan_files = _deep_scan_workspace(
-            workspace, agent_target
+        workspace_context, scan_manifest = _deep_scan_workspace(
+            workspace,
+            agent_target,
+            include_parent=payload.scan_include_parent,
         )
+        deep_scan_files = scan_manifest["files"]
+    log.info(
+        "generate_suite: project_id=%s strategy=%s framework=%s "
+        "deep_scan=%s sibling_repos=%s",
+        project_id,
+        target_strategy,
+        target_framework,
+        payload.deep_scan,
+        payload.scan_include_parent,
+    )
 
     user = _user_prompt(
         suite_name=payload.suite_name,
@@ -916,6 +1026,32 @@ async def generate_suite(
     val = validate(suite_py, workspace)
     dossier_has_cases = bool(re.search(r"^### ", dossier_md, re.MULTILINE))
 
+    # Hardened preflight pipeline — runs syntax / import_load /
+    # suite_discovery as distinct stages so the UI can show per-stage
+    # status + structured diagnostics + remediation. ``preflight_ok``
+    # is the canonical "did it work" signal; the legacy ``loadable`` /
+    # ``compiles`` fields stay populated for back-compat with existing
+    # dashboards.
+    report = run_preflight(
+        suite_py,
+        workspace,
+        auto_install=payload.auto_install_preview,
+    )
+
+    # If the preflight reported MODULE_NOT_FOUND but validate() decided
+    # the import was a known runtime dep, mirror the missing_module
+    # onto the response — the UI's existing "Add to requirements.txt"
+    # button keys off this field.
+    missing_from_preflight: str | None = None
+    for stage_dict in report.to_dict()["stages"]:
+        for d in stage_dict["diagnostics"]:
+            if d.get("code") == ErrorCode.MODULE_NOT_FOUND:
+                remed = d.get("remediation") or {}
+                missing_from_preflight = remed.get("missing_module")
+                break
+        if missing_from_preflight:
+            break
+
     return GenerateSuiteOut(
         provider=resolved.name,
         model=resolved.model,
@@ -929,12 +1065,19 @@ async def generate_suite(
         has_suite_call=val.has_suite_call,
         loadable=val.loadable,
         loadable_via_venv=val.loadable_via_venv,
-        missing_module=val.missing_module,
+        missing_module=val.missing_module or missing_from_preflight,
         load_error=val.load_error,
-        discovered_suites=val.discovered_suites,
-        total_cases=val.total_cases,
+        discovered_suites=val.discovered_suites or report.discovered_suites,
+        total_cases=val.total_cases or report.total_cases,
         agent_import_target=agent_target,
         deep_scan_files=deep_scan_files,
+        preflight_ok=report.ok,
+        preflight_stages=[s.to_dict() for s in report.stages],
+        error_code=report.error_code,
+        strategy=target_strategy,
+        framework=target_framework,
+        scan_manifest=scan_manifest,
+        preview_venv_used=report.preview_venv_used,
     )
 
 

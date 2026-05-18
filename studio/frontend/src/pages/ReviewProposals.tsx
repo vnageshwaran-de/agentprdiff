@@ -14,6 +14,7 @@ import { ArrowLeft, PackagePlus, Sparkles } from "lucide-react";
 import { api, ApiError } from "@/api/client";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
+import { PreflightPanel } from "@/components/PreflightPanel";
 import { cn } from "@/lib/cn";
 import type { AgentsMdOut, GenerateSuiteOut } from "@/api/types";
 
@@ -56,6 +57,18 @@ export function ReviewProposalsPage() {
   // what gives the LLM enough context to write a "full suite" tied to the
   // actual code (rather than a generic suite from the playbook alone).
   const [deepScan, setDeepScan] = useState(true);
+  // Sibling-repos opt-in. Default off — the scan stays scoped to the
+  // selected project root unless the user explicitly expands it. We
+  // surface this in the UI as a sub-checkbox of deep_scan because
+  // sibling scanning makes no sense without deep_scan in the first
+  // place.
+  const [scanIncludeParent, setScanIncludeParent] = useState(false);
+  // Auto-install preview: when on and the preflight import_load stage
+  // fails with APD_PREFLIGHT_MODULE_NOT_FOUND, Studio spins up an
+  // ephemeral /tmp venv with the missing package + engine, re-runs the
+  // load stage there, and tears the venv down before responding. The
+  // user can SEE the suite shape this way without committing to install.
+  const [autoInstallPreview, setAutoInstallPreview] = useState(false);
 
   const generate = useMutation({
     mutationFn: () =>
@@ -63,6 +76,8 @@ export function ReviewProposalsPage() {
         suite_name: suiteName,
         prompt,
         deep_scan: deepScan,
+        scan_include_parent: scanIncludeParent,
+        auto_install_preview: autoInstallPreview,
       }),
   });
 
@@ -79,7 +94,14 @@ export function ReviewProposalsPage() {
         content: edited || result?.generated_python || "",
         dossier: editedDossier || result?.generated_dossier || undefined,
         overwrite: true,
-        force: !result?.loadable,
+        // Force the save when preflight didn't fully pass. We prefer
+        // the canonical ``preflight_ok`` signal when the backend
+        // exposes it (newer hardened pipeline), falling back to the
+        // legacy ``loadable`` flag for older builds.
+        force:
+          result?.preflight_ok != null
+            ? !result.preflight_ok
+            : !result?.loadable,
       }),
   });
 
@@ -142,6 +164,51 @@ export function ReviewProposalsPage() {
               real behaviors instead of generic patterns. Adds ~30 KB of
               context per request.
             </div>
+            <label className="mt-2 flex items-start gap-2 text-[11px]">
+              <input
+                type="checkbox"
+                checked={scanIncludeParent}
+                disabled={!deepScan}
+                onChange={(e) => setScanIncludeParent(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 cursor-pointer"
+              />
+              <span className="flex-1">
+                <span className="font-medium">Include sibling repositories</span>
+                <span className="ml-1 text-muted-foreground">
+                  — expand scan past the project root into the parent
+                  folder. Off by default; the manifest in the result
+                  pane will show exactly which files were added.
+                </span>
+              </span>
+            </label>
+          </div>
+        </label>
+        <label className="flex items-start gap-2 rounded-md border border-border bg-muted/20 p-2.5 text-xs">
+          <input
+            type="checkbox"
+            checked={autoInstallPreview}
+            onChange={(e) => setAutoInstallPreview(e.target.checked)}
+            className="mt-0.5 h-4 w-4 cursor-pointer"
+          />
+          <div className="flex-1">
+            <div className="font-medium">
+              Auto-install missing deps for preview only
+            </div>
+            <div className="text-muted-foreground">
+              When the preflight import stage hits{" "}
+              <code className="rounded-md bg-card px-1 font-mono">
+                ModuleNotFoundError
+              </code>
+              , Studio will spin up an ephemeral{" "}
+              <code className="rounded-md bg-card px-1 font-mono">/tmp</code>{" "}
+              venv with the missing package installed, retry the
+              import there, then tear it down. Non-persistent — your
+              project venv and{" "}
+              <code className="rounded-md bg-card px-1 font-mono">
+                requirements.txt
+              </code>{" "}
+              are untouched.
+            </div>
           </div>
         </label>
         <div className="flex justify-end">
@@ -168,14 +235,14 @@ export function ReviewProposalsPage() {
       {result && (
         <Card className="space-y-3 p-4">
           <div className="flex items-baseline justify-between">
-            <h3 className="font-semibold">Generated suite preview</h3>
+            <h3 className="font-semibold">
+              {result.preflight_ok === true
+                ? "Generated suite preview"
+                : result.preflight_ok === false
+                  ? "Generated suite — preflight failed"
+                  : "Generated suite preview"}
+            </h3>
             <div className="flex gap-2 text-xs">
-              <Badge tone={result.compiles ? "success" : "danger"}>
-                {result.compiles ? "compiles" : "syntax error"}
-              </Badge>
-              <Badge tone={result.loadable ? "success" : "warning"}>
-                {result.loadable ? "loadable" : "engine load failed"}
-              </Badge>
               <Badge tone="neutral">{result.total_cases} cases</Badge>
               {result.deep_scan_files && result.deep_scan_files.length > 0 && (
                 <Badge tone="info">
@@ -185,29 +252,27 @@ export function ReviewProposalsPage() {
               )}
             </div>
           </div>
-          {result.deep_scan_files && result.deep_scan_files.length > 0 && (
-            <details className="rounded-md border border-border bg-muted/20 px-3 py-2 text-xs">
-              <summary className="cursor-pointer font-medium">
-                Workspace files included in the LLM context (
-                {result.deep_scan_files
-                  .reduce((s, f) => s + f.bytes, 0)
-                  .toLocaleString()}{" "}
-                bytes total)
-              </summary>
-              <ul className="mt-2 space-y-1 font-mono">
-                {result.deep_scan_files.map((f) => (
-                  <li
-                    key={f.path}
-                    className="flex items-baseline justify-between gap-2"
-                  >
-                    <code className="truncate">{f.path}</code>
-                    <span className="text-muted-foreground">
-                      {f.bytes.toLocaleString()} B
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </details>
+          <PreflightPanel
+            preflightOk={result.preflight_ok}
+            stages={result.preflight_stages}
+            errorCode={result.error_code}
+            strategy={result.strategy}
+            framework={result.framework}
+            scanManifest={result.scan_manifest}
+            previewVenvUsed={result.preview_venv_used}
+            onAddRequirement={(pkg) => addRequirement.mutate(pkg)}
+            addRequirementPending={addRequirement.isPending}
+          />
+          {/* Fallback for older backends that don't return preflight_stages: */}
+          {(!result.preflight_stages || result.preflight_stages.length === 0) && (
+            <div className="flex gap-2 text-xs">
+              <Badge tone={result.compiles ? "success" : "danger"}>
+                {result.compiles ? "compiles" : "syntax error"}
+              </Badge>
+              <Badge tone={result.loadable ? "success" : "warning"}>
+                {result.loadable ? "loadable" : "engine load failed"}
+              </Badge>
+            </div>
           )}
           <p className="text-xs italic text-muted-foreground">
             Edit the suite Python or dossier below before saving. The save
@@ -243,17 +308,25 @@ export function ReviewProposalsPage() {
           )}
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex-1 space-y-1.5 text-xs">
-              {result.parse_error && (
+              {/* Legacy diagnostics — only shown when the backend
+                  didn't emit structured preflight stages (older
+                  studio backends, or HTTP-mode projects that skip
+                  the load stage). The PreflightPanel above carries
+                  the new, richer surface. */}
+              {(!result.preflight_stages || result.preflight_stages.length === 0) &&
+                result.parse_error && (
                 <p className="text-destructive">
                   parse error: {result.parse_error}
                 </p>
               )}
-              {!result.parse_error && result.load_error && (
+              {(!result.preflight_stages || result.preflight_stages.length === 0) &&
+                !result.parse_error && result.load_error && (
                 <p className="text-[hsl(var(--warning))]">
                   load warning: {result.load_error}
                 </p>
               )}
-              {result.missing_module && (
+              {(!result.preflight_stages || result.preflight_stages.length === 0) &&
+                result.missing_module && (
                 <div className="flex flex-wrap items-center gap-2 rounded-md border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/5 px-3 py-2">
                   <span className="text-muted-foreground">
                     Your project's agent imports{" "}

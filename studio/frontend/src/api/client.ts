@@ -138,6 +138,13 @@ export const api = {
       // + tools/* + README and includes them in the LLM context. Off by
       // default — turn on for the "full suite from real code" flow.
       deep_scan?: boolean;
+      // When true, expand the deep scan past the workspace root into the
+      // parent directory — explicit opt-in for picking up sibling repos.
+      scan_include_parent?: boolean;
+      // When true and preflight reports a missing dep, retry inside an
+      // ephemeral /tmp venv so the user can preview suite shape without
+      // persistently installing anything. Non-persistent.
+      auto_install_preview?: boolean;
     },
   ) =>
     request<GenerateSuiteOut>(`/projects/${projectId}/agents-md/generate-suite`, {

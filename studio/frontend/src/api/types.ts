@@ -218,6 +218,55 @@ export interface ScaffoldSuiteOut {
   cases_used: number;
 }
 
+/** One stage of the hardened preflight pipeline. The UI renders these
+ *  vertically with per-stage status + diagnostics. */
+export type PreflightStageName = "syntax" | "import_load" | "suite_discovery";
+export type PreflightStageStatus = "pending" | "passed" | "failed" | "skipped";
+export type PreflightSeverity = "error" | "warning" | "info";
+
+export interface PreflightRemediation {
+  missing_module?: string;
+  top_level_package?: string;
+  where_to_declare?: string;
+  install_commands?: string[];
+  note?: string;
+}
+
+export interface PreflightDiagnostic {
+  stage: PreflightStageName;
+  /** Stable error code, e.g. APD_PREFLIGHT_HYPHENATED_IMPORT. */
+  code: string;
+  severity: PreflightSeverity;
+  message: string;
+  file?: string | null;
+  line?: number | null;
+  col?: number | null;
+  fix_hint?: string | null;
+  /** Structured remediation, when applicable (missing dep, etc.). */
+  remediation?: PreflightRemediation | null;
+  statement?: string;
+}
+
+export interface PreflightStage {
+  name: PreflightStageName;
+  status: PreflightStageStatus;
+  duration_ms: number;
+  diagnostics: PreflightDiagnostic[];
+}
+
+export interface ScanManifest {
+  /** Absolute filesystem path bounding the scan. Surfaced verbatim so
+   *  the user can verify nothing leaked from outside the project root. */
+  root: string;
+  /** True when the user explicitly opted in to scanning sibling
+   *  repositories alongside the selected workspace. */
+  sibling_repos_included: boolean;
+  files: Array<{ path: string; bytes: number }>;
+  total_bytes: number;
+  /** Files Studio refused to include and why (e.g. resolved outside root). */
+  rejected: Array<{ path: string; reason: string }>;
+}
+
 export interface GenerateSuiteOut {
   provider: string;
   model: string;
@@ -238,6 +287,21 @@ export interface GenerateSuiteOut {
   agent_import_target: string;
   /** Files Studio included in the LLM context for the deep-scan generate. */
   deep_scan_files?: Array<{ path: string; bytes: number }>;
+
+  // ----- Hardened preflight + manifest -----
+  /** Canonical "did it work" signal. Replaces ad-hoc combos of compiles
+   *  + loadable + missing_module. */
+  preflight_ok?: boolean;
+  preflight_stages?: PreflightStage[];
+  /** First failing error code in stage order; null when everything passed. */
+  error_code?: string | null;
+  /** Generation strategy: direct | adapter | extend_existing | scaffold. */
+  strategy?: string;
+  /** Detected framework: flask | fastapi | cloud_function | cli | module. */
+  framework?: string | null;
+  scan_manifest?: ScanManifest | null;
+  /** True if preflight retried inside an ephemeral venv via auto_install_preview. */
+  preview_venv_used?: boolean;
 }
 
 export interface SaveGeneratedOut {
