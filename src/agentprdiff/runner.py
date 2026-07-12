@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from .core import GradeResult, Suite, Trace, run_agent
 from .differ import TraceDelta, diff_traces
 from .store import BaselineStore
+from .trace_store import TraceStore
 
 
 class CaseReport(BaseModel):
@@ -73,7 +74,7 @@ class RunReport(BaseModel):
 class Runner:
     """Runs suites in record or check mode."""
 
-    def __init__(self, store: BaselineStore) -> None:
+    def __init__(self, store: BaselineStore | TraceStore) -> None:
         self.store = store
 
     # ------------------------------------------------------------------ api
