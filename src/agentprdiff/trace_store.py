@@ -58,7 +58,7 @@ class TraceStore(ABC):
     def save_run_trace(self, run_id: str, trace: Trace) -> None:
         """Persist a trace produced during a ``check`` run."""
 
-    def ensure_initialized(self) -> None:
+    def ensure_initialized(self) -> None:  # noqa: B027
         """Called once per runner invocation before any traces are written.
 
         Override to create tables, buckets, or directories on first use.
