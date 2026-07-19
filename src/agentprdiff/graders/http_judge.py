@@ -32,7 +32,7 @@ import os
 from typing import Any
 
 from ..core import Trace
-from .semantic import Judge, _parse_verdict, _JUDGE_PROMPT
+from .semantic import _JUDGE_PROMPT, Judge, _parse_verdict
 
 
 def http_judge(
@@ -66,8 +66,8 @@ def http_judge(
 
     def _judge(rubric: str, trace: Trace) -> tuple[bool, str]:
         try:
-            import urllib.request
             import json as _json
+            import urllib.request
 
             prompt = _JUDGE_PROMPT.format(rubric=rubric, output=str(trace.output or ""))
             payload: dict[str, Any] = {

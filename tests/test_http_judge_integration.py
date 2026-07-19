@@ -16,6 +16,7 @@ Skip automatically in CI (no keys set) via the `integration` mark.
 from __future__ import annotations
 
 import os
+
 import pytest
 
 from agentprdiff.core import Trace
