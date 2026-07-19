@@ -4,9 +4,7 @@
 
 from __future__ import annotations
 
-import pytest
-
-from agentprdiff.core import Trace, ToolCall
+from agentprdiff.core import ToolCall, Trace
 from agentprdiff.masking import MaskRule, mask_trace
 
 
