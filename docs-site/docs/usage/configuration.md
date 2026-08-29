@@ -33,6 +33,7 @@ top-level Click group.
 | `record`, `check`, `review` | `--list` | — | Print suite/case names without running. |
 | `record`, `check` | `--json-out PATH` | — | Write a JSON report to `PATH`. Overwrites every run. |
 | `check` | `--fail-on/--no-fail-on` | `--fail-on` | When `--no-fail-on`, regressions are reported but exit code stays 0. |
+| `check` | `--strict-judge` | off | Exit 1 when any `semantic()` grader was judged by `fake_judge` via **silent fallback** (no judge env var, no API key). Recommended in CI; will become the default in v1.0. Explicit `AGENTPRDIFF_JUDGE=fake` still passes. |
 | `scaffold` | `--recipe {sync-openai,async-openai,stubbed}` | `sync-openai` | Picks the eval-wrapper template. |
 | `scaffold` | `--dir PATH` | `.` | Project root to scaffold into. |
 
@@ -42,12 +43,25 @@ top-level Click group.
 
 The `semantic()` grader picks a judge in this order:
 
-1. `AGENTGUARD_JUDGE=fake` → deterministic keyword matching.
-2. `AGENTGUARD_JUDGE=openai` *or* `OPENAI_API_KEY` set → `openai_judge()`
+1. `AGENTPRDIFF_JUDGE=fake` → deterministic keyword matching.
+2. `AGENTPRDIFF_JUDGE=openai` *or* `OPENAI_API_KEY` set → `openai_judge()`
    (default model `gpt-4o-mini`).
-3. `AGENTGUARD_JUDGE=anthropic` *or* `ANTHROPIC_API_KEY` set →
+3. `AGENTPRDIFF_JUDGE=anthropic` *or* `ANTHROPIC_API_KEY` set →
    `anthropic_judge()` (default model `claude-haiku-4-5-20251001`).
 4. Otherwise → `fake_judge` (silent fallback).
+
+:::caution Silent fallback
+Step 4 means a pipeline with no judge configured still goes green — but its
+semantic assertions were graded by keyword matching, not a real judge. In CI,
+run `agentprdiff check --strict-judge` to turn that configuration into a
+failure instead. Strict mode will become the default in v1.0.
+:::
+
+:::note Legacy name
+Before v0.5.0 this variable was called `AGENTGUARD_JUDGE`. The old name still
+works and emits a `DeprecationWarning`; it will be removed in v1.0. When both
+are set, `AGENTPRDIFF_JUDGE` wins.
+:::
 
 When any case in a run uses `semantic()`, the terminal reporter prints a
 banner like:
@@ -160,7 +174,7 @@ from agentprdiff.adapters import register_prices
 # Custom pricing for an internal fine-tune.
 register_prices({"acme-llama-3-fine": (0.0003, 0.0006)})
 
-# Pin the judge model — overrides AGENTGUARD_JUDGE.
+# Pin the judge model — overrides AGENTPRDIFF_JUDGE.
 JUDGE = openai_judge(model="gpt-4o-mini")
 
 billing = suite(

@@ -122,7 +122,7 @@ sync, what was async stays async.
 from agentprdiff.graders import semantic
 from agentprdiff.graders.semantic import openai_judge, anthropic_judge
 
-# Use a real judge explicitly (overrides AGENTGUARD_JUDGE / env autodetect).
+# Use a real judge explicitly (overrides AGENTPRDIFF_JUDGE / env autodetect).
 expect = [
     semantic("agent acknowledges the refund", judge=openai_judge(model="gpt-4o-mini")),
     semantic("agent stays on-brand",          judge=anthropic_judge(model="claude-haiku-4-5-20251001")),

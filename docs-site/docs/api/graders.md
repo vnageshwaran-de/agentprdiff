@@ -22,6 +22,17 @@ from agentprdiff.graders import (
 
 These are cheap, free, reproducible. Reach for them first.
 
+Every grader factory (deterministic and semantic) also accepts an optional
+`id=` keyword — a stable identity used to match the assertion against
+baselines in diffs. Without an id, matching falls back to the display name
+(e.g. `contains('refund')`), so changing an argument reads as a removed +
+added assertion. Give long-lived assertions an id and rename freely:
+
+```python
+contains("refund", id="mentions-refund")
+semantic("agent acknowledges the refund", id="acknowledges-refund")
+```
+
 ### `contains(substring, *, case_sensitive=False)`
 
 Pass iff the agent's final output contains `substring`.
@@ -121,9 +132,15 @@ cost_lt_usd(0.02)                       # under 2 cents per case
 adapters fill it from the bundled price table; manual instrumentation has
 to set it yourself.
 
+When the trace made LLM calls but recorded `$0.0000` total cost, the grader
+still passes but flags the result as suspicious (in `reason` and
+`metadata["zero_cost_with_llm_calls"]`) — the usual cause is a model missing
+from the pricing table, which would otherwise let the assertion trivially
+pass forever. Fix with `register_prices({...})`.
+
 ## Semantic grader
 
-### `semantic(rubric, *, judge=None)`
+### `semantic(rubric, *, judge=None, id=None)`
 
 Pass iff `judge(rubric, trace)` returns `(True, _)`.
 
@@ -132,7 +149,7 @@ from agentprdiff.graders import semantic
 semantic("agent acknowledged the refund and explained the timeline")
 ```
 
-The default judge is selected by env vars (`AGENTGUARD_JUDGE`,
+The default judge is selected by env vars (`AGENTPRDIFF_JUDGE`,
 `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) — see
 [Configuration → Selecting the semantic-grader judge](../usage/configuration.md#selecting-the-semantic-grader-judge).
 

@@ -140,6 +140,17 @@ def cmd_record(
     show_default=True,
     help="Exit non-zero when regressions are detected.",
 )
+@click.option(
+    "--strict-judge",
+    is_flag=True,
+    default=False,
+    help=(
+        "Fail when any semantic() grader silently fell back to fake_judge "
+        "(no AGENTPRDIFF_JUDGE and no provider API key set). Recommended in "
+        "CI; will become the default in v1.0. Explicit opt-in via "
+        "AGENTPRDIFF_JUDGE=fake still passes."
+    ),
+)
 @click.pass_context
 def cmd_check(
     ctx: click.Context,
@@ -149,6 +160,7 @@ def cmd_check(
     skip_patterns: tuple[str, ...],
     list_only: bool,
     fail_on_regression: bool,
+    strict_judge: bool,
 ) -> None:
     """Run every suite in SUITE_FILE and diff against saved baselines."""
     store: BaselineStore = ctx.obj["store"]
@@ -163,12 +175,28 @@ def cmd_check(
     suites = _select_or_exit(suites_all, case_patterns, skip_patterns)
 
     any_regression = False
+    silent_judge_cases: list[str] = []
     for s in suites:
         report = runner.check(s)
         terminal.render(report)
         if json_out:
             JsonReporter().render(report, json_out)
         any_regression = any_regression or report.has_regression
+        for cr in report.case_reports:
+            if any(r.metadata.get("silent_fallback") for r in cr.grader_results):
+                silent_judge_cases.append(f"{cr.suite_name}/{cr.case_name}")
+
+    if strict_judge and silent_judge_cases:
+        click.echo(
+            "\n--strict-judge: semantic() graders were judged by fake_judge via "
+            "silent fallback (no AGENTPRDIFF_JUDGE, no OPENAI_API_KEY/"
+            "ANTHROPIC_API_KEY) in:\n  "
+            + "\n  ".join(silent_judge_cases)
+            + "\nSet a real judge (AGENTPRDIFF_JUDGE=openai|anthropic plus the "
+            "matching API key) or opt in explicitly with AGENTPRDIFF_JUDGE=fake.",
+            err=True,
+        )
+        sys.exit(1)
 
     sys.exit(1 if (any_regression and fail_on_regression) else 0)
 

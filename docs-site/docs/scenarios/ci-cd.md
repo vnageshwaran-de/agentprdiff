@@ -33,13 +33,18 @@ jobs:
           OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           # Make the semantic-judge mode explicit (don't rely on autodetection).
-          AGENTGUARD_JUDGE:  anthropic
+          AGENTPRDIFF_JUDGE:  anthropic
         run: |
-          agentprdiff check suites/*.py --json-out artifacts/agentprdiff.json
+          agentprdiff check suites/*.py --strict-judge --json-out artifacts/agentprdiff.json
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: agentprdiff, path: artifacts/ }
 ```
+
+`--strict-judge` makes CI fail if the semantic judge silently fell back to
+`fake_judge` (e.g. a missing secret) instead of green-lighting keyword
+matching — the failure mode you least want to discover in production. It
+will become the default in v1.0.
 
 Artifact upload happens on `if: always()` so a failed check still hands you
 the JSON to inspect locally. The regression panel printed to the terminal
@@ -59,7 +64,7 @@ agentprdiff:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
   variables:
-    AGENTGUARD_JUDGE: "anthropic"
+    AGENTPRDIFF_JUDGE: "anthropic"
   before_script:
     - pip install -e ".[dev]"
   script:
@@ -108,7 +113,7 @@ steps:
       agentprdiff check suites/*.py --json-out artifacts/agentprdiff.json
     artifact_paths: "artifacts/agentprdiff.json"
     env:
-      AGENTGUARD_JUDGE: anthropic
+      AGENTPRDIFF_JUDGE: anthropic
 ```
 
 ## What the JSON artifact looks like

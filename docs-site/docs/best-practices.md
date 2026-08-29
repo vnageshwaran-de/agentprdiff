@@ -144,16 +144,16 @@ change in a wall of JSON.
 ## Make the judge mode explicit in CI
 
 Don't rely on the judge's autodetect order in CI. Set
-`AGENTGUARD_JUDGE` explicitly so future maintainers know which judge ran:
+`AGENTPRDIFF_JUDGE` explicitly so future maintainers know which judge ran:
 
 ```yaml
 env:
-  AGENTGUARD_JUDGE: anthropic
+  AGENTPRDIFF_JUDGE: anthropic
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
 ```
 
 If the suite has no `semantic()` graders, set
-`AGENTGUARD_JUDGE=fake` to make the absence-of-judge intentional.
+`AGENTPRDIFF_JUDGE=fake` to make the absence-of-judge intentional.
 
 ## Commit the workflow YAML alongside the suite
 
@@ -192,7 +192,7 @@ ten seconds and decide whether to revert or re-record.
 - Inline test data in the suite file or under `suites/` rather than
   reading from absolute paths.
 - Pin the agent SDK version and any pricing overrides.
-- Use the same `AGENTGUARD_JUDGE` mode locally and in CI.
+- Use the same `AGENTPRDIFF_JUDGE` mode locally and in CI.
 
 A suite that "works on my machine" but fails in CI is a flaky suite,
 which is worse than no suite — it teaches the team to ignore the gate.

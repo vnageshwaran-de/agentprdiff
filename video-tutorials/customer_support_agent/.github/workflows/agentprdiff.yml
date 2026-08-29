@@ -40,9 +40,9 @@ jobs:
           GOOGLE_MODEL: gemini-2.5-flash
           LIVE_TOOLS: "false"
           # Semantic judge mode: fake_judge (free, keyword matching).
-          # To enable a real LLM judge, add AGENTGUARD_JUDGE and the
+          # To enable a real LLM judge, add AGENTPRDIFF_JUDGE and the
           # corresponding API key secret. See suites/README.md.
-          AGENTGUARD_JUDGE: fake
+          AGENTPRDIFF_JUDGE: fake
         run: |
           if [ -z "${GOOGLE_API_KEY}" ]; then
             echo "::warning::GOOGLE_API_KEY secret not set — skipping agentprdiff check."

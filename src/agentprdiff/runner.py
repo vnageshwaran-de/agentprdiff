@@ -19,6 +19,22 @@ from .store import BaselineStore
 from .trace_store import TraceStore
 
 
+def _load_baseline_results(baseline: Trace) -> list[GradeResult] | None:
+    """Parse grader results persisted in a baseline trace, if present.
+
+    Returns None for legacy baselines (recorded before v0.5.0) or when the
+    stored payload doesn't validate, so the caller can fall back to
+    re-running graders.
+    """
+    raw = baseline.metadata.get("grader_results")
+    if not isinstance(raw, list) or not raw:
+        return None
+    try:
+        return [GradeResult.model_validate(item) for item in raw]
+    except Exception:  # noqa: BLE001 — malformed payloads degrade to legacy path
+        return None
+
+
 class CaseReport(BaseModel):
     """Per-case outcome within a RunReport."""
 
@@ -100,6 +116,14 @@ class Runner:
                 input_value=case.input,
             )
             grader_results = [g(trace) for g in case.expect]
+            # Persist grader results inside the trace so baselines are truly
+            # frozen: check mode reads the recorded verdicts instead of
+            # re-running graders against the baseline (which, for semantic
+            # graders, would mean a paid + nondeterministic LLM call against
+            # the baseline on every check).
+            trace.metadata["grader_results"] = [
+                r.model_dump(mode="json") for r in grader_results
+            ]
             # Persist the current run either way (record = baseline, check = runs/).
             delta: TraceDelta | None = None
             if mode == "record":
@@ -109,9 +133,12 @@ class Runner:
                 baseline = self.store.load_baseline(suite.name, case.name)
                 baseline_results = None
                 if baseline is not None:
-                    # Re-run graders against the baseline so the delta's
-                    # per-assertion regression flags are accurate.
-                    baseline_results = [g(baseline) for g in case.expect]
+                    baseline_results = _load_baseline_results(baseline)
+                    if baseline_results is None:
+                        # Legacy baseline (recorded before grader results were
+                        # persisted): fall back to re-running the graders
+                        # against the stored trace.
+                        baseline_results = [g(baseline) for g in case.expect]
                 delta = diff_traces(
                     baseline=baseline,
                     current=trace,

@@ -19,11 +19,62 @@ Custom judges are encouraged. A judge is a callable:
 from __future__ import annotations
 
 import os
+import warnings
 from collections.abc import Callable
 
 from ..core import Grader, GradeResult, Trace
 
 Judge = Callable[[str, Trace], tuple[bool, str]]
+
+# Environment variable that selects the default judge. The legacy name
+# (AGENTGUARD_JUDGE, from a pre-release name of this project) is still honored
+# with a DeprecationWarning and will be removed in v1.0.
+_ENV_JUDGE = "AGENTPRDIFF_JUDGE"
+_ENV_JUDGE_LEGACY = "AGENTGUARD_JUDGE"
+
+_warned_legacy_env = False
+
+
+def _judge_env_choice() -> tuple[str, str]:
+    """Return ``(choice, env_var_name)`` for the judge-selection env var.
+
+    ``choice`` is the lowercased value ("" when neither var is set) and
+    ``env_var_name`` is the variable it came from (the new name when unset,
+    so callers can render accurate messages).
+    """
+    value = os.environ.get(_ENV_JUDGE)
+    if value:
+        return value.lower(), _ENV_JUDGE
+    legacy = os.environ.get(_ENV_JUDGE_LEGACY)
+    if legacy:
+        global _warned_legacy_env
+        if not _warned_legacy_env:
+            _warned_legacy_env = True
+            warnings.warn(
+                f"{_ENV_JUDGE_LEGACY} is deprecated; use {_ENV_JUDGE} instead. "
+                "The legacy name still works but will be removed in v1.0.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+        return legacy.lower(), _ENV_JUDGE_LEGACY
+    return "", _ENV_JUDGE
+
+
+def default_judge_is_silent_fallback() -> bool:
+    """True when ``semantic()`` without an explicit ``judge=`` would fall back
+    to :func:`fake_judge` *silently* — no judge env var set and no provider
+    API key in the environment.
+
+    This is the configuration ``agentprdiff check --strict-judge`` refuses to
+    accept: a green build whose semantic assertions were graded by keyword
+    matching is not a green build.
+    """
+    choice, _ = _judge_env_choice()
+    return (
+        not choice
+        and not os.environ.get("OPENAI_API_KEY")
+        and not os.environ.get("ANTHROPIC_API_KEY")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -31,13 +82,19 @@ Judge = Callable[[str, Trace], tuple[bool, str]]
 # ---------------------------------------------------------------------------
 
 
-def semantic(rubric: str, *, judge: Judge | None = None) -> Grader:
+def semantic(rubric: str, *, judge: Judge | None = None, id: str | None = None) -> Grader:
     """Pass iff the `judge` says the trace satisfies the `rubric`.
 
     The rubric is natural language, e.g. "the agent acknowledged the refund
     and provided a ticket number".
+
+    ``id`` optionally gives the assertion a stable identity for baseline
+    matching, so rewording the rubric doesn't register as a removed + added
+    assertion in diffs.
     """
+    silent_fallback = judge is None and default_judge_is_silent_fallback()
     backend = judge or _default_judge()
+    metadata: dict[str, object] = {"silent_fallback": True} if silent_fallback else {}
 
     def _grader(trace: Trace) -> GradeResult:
         try:
@@ -46,12 +103,16 @@ def semantic(rubric: str, *, judge: Judge | None = None) -> Grader:
             return GradeResult(
                 passed=False,
                 grader_name=f"semantic({rubric!r})",
+                grader_id=id,
                 reason=f"judge raised {type(exc).__name__}: {exc}",
+                metadata=dict(metadata),
             )
         return GradeResult(
             passed=passed,
             grader_name=f"semantic({rubric!r})",
+            grader_id=id,
             reason=reason,
+            metadata=dict(metadata),
         )
 
     return _grader
@@ -165,12 +226,15 @@ def _default_judge() -> Judge:
     """Pick a default judge based on environment.
 
     Order of preference:
-    * AGENTGUARD_JUDGE=fake -> fake_judge
-    * AGENTGUARD_JUDGE=openai or OPENAI_API_KEY set -> openai_judge()
-    * AGENTGUARD_JUDGE=anthropic or ANTHROPIC_API_KEY set -> anthropic_judge()
-    * otherwise -> fake_judge (so pipelines stay green in CI without keys)
+    * AGENTPRDIFF_JUDGE=fake -> fake_judge
+    * AGENTPRDIFF_JUDGE=openai or OPENAI_API_KEY set -> openai_judge()
+    * AGENTPRDIFF_JUDGE=anthropic or ANTHROPIC_API_KEY set -> anthropic_judge()
+    * otherwise -> fake_judge (so pipelines stay green in CI without keys —
+      surfaced by the judge banner, and refused by `check --strict-judge`)
+
+    The legacy AGENTGUARD_JUDGE name is honored with a DeprecationWarning.
     """
-    choice = (os.environ.get("AGENTGUARD_JUDGE") or "").lower()
+    choice, _ = _judge_env_choice()
     if choice == "fake":
         return fake_judge
     if choice == "openai" or (not choice and os.environ.get("OPENAI_API_KEY")):
@@ -198,26 +262,29 @@ def describe_default_judge() -> str:
     visible at the moment a suite executes — not buried in trace JSON.
 
     Examples:
-        - ``"fake_judge (AGENTGUARD_JUDGE=fake)"``
+        - ``"fake_judge (AGENTPRDIFF_JUDGE=fake)"``
         - ``"openai/gpt-4o-mini (OPENAI_API_KEY set)"``
-        - ``"anthropic/claude-haiku-4-5-20251001 (AGENTGUARD_JUDGE=anthropic)"``
-        - ``"fake_judge (no AGENTGUARD_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)"``
+        - ``"anthropic/claude-haiku-4-5-20251001 (AGENTPRDIFF_JUDGE=anthropic)"``
+        - ``"fake_judge (no AGENTPRDIFF_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)"``
+
+    When the legacy AGENTGUARD_JUDGE variable is what's set, the description
+    names it, so the banner tells the truth about where the choice came from.
     """
-    choice = (os.environ.get("AGENTGUARD_JUDGE") or "").lower()
+    choice, env_var = _judge_env_choice()
     if choice == "fake":
-        return "fake_judge (AGENTGUARD_JUDGE=fake)"
+        return f"fake_judge ({env_var}=fake)"
     if choice == "openai":
-        return f"openai/{_DEFAULT_OPENAI_MODEL} (AGENTGUARD_JUDGE=openai)"
+        return f"openai/{_DEFAULT_OPENAI_MODEL} ({env_var}=openai)"
     if choice == "anthropic":
         return (
-            f"anthropic/{_DEFAULT_ANTHROPIC_MODEL} (AGENTGUARD_JUDGE=anthropic)"
+            f"anthropic/{_DEFAULT_ANTHROPIC_MODEL} ({env_var}=anthropic)"
         )
     if not choice and os.environ.get("OPENAI_API_KEY"):
         return f"openai/{_DEFAULT_OPENAI_MODEL} (OPENAI_API_KEY set)"
     if not choice and os.environ.get("ANTHROPIC_API_KEY"):
         return f"anthropic/{_DEFAULT_ANTHROPIC_MODEL} (ANTHROPIC_API_KEY set)"
     return (
-        "fake_judge (no AGENTGUARD_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY"
+        "fake_judge (no AGENTPRDIFF_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY"
         " — silent fallback)"
     )
 

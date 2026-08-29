@@ -154,7 +154,7 @@ agentprdiff check  suite.py     # diff against baselines (exit 0)
 
 ```
 agentprdiff check — suite customer_support  (4/4 passed, 0 regressed)
-semantic judge: fake_judge (no AGENTGUARD_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)
+semantic judge: fake_judge (no AGENTPRDIFF_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━┓
 ┃ Case                       ┃ Result┃ Cost Δ ┃ Latency ┃ Notes┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━┩

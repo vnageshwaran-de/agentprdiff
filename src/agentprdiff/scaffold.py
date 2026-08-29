@@ -390,10 +390,10 @@ CI logs.
 
 - `fake_judge` — free, keyword matching only. Acceptable when the rubric
   reduces cleanly to keywords; brittle otherwise. Set
-  `AGENTGUARD_JUDGE=fake`.
+  `AGENTPRDIFF_JUDGE=fake`.
 - Real Anthropic judge — recommended for cost.
-  `AGENTGUARD_JUDGE=anthropic` plus `ANTHROPIC_API_KEY=...`.
-- Real OpenAI judge — `AGENTGUARD_JUDGE=openai` plus `OPENAI_API_KEY=...`.
+  `AGENTPRDIFF_JUDGE=anthropic` plus `ANTHROPIC_API_KEY=...`.
+- Real OpenAI judge — `AGENTPRDIFF_JUDGE=openai` plus `OPENAI_API_KEY=...`.
 - `Not applicable` — this suite has no `semantic(...)` graders. Verify with
   `grep -n "semantic(" suites/{name}.py`. State this explicitly anyway so
   the next reviewer knows the absence of judge config is deliberate.
@@ -639,12 +639,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt agentprdiff
           # Semantic-judge SDKs. The agentprdiff wheel imports these lazily,
-          # so installing only the one matching AGENTGUARD_JUDGE below keeps
+          # so installing only the one matching AGENTPRDIFF_JUDGE below keeps
           # the CI environment lean. If your suite has no semantic() graders
           # (see suites/README.md "Semantic Judge Keys"), drop both lines.
           # Uncomment exactly one to match the chosen judge mode:
-          #   pip install anthropic     # if AGENTGUARD_JUDGE=anthropic
-          #   pip install openai        # if AGENTGUARD_JUDGE=openai (already installed if your agent uses OpenAI)
+          #   pip install anthropic     # if AGENTPRDIFF_JUDGE=anthropic
+          #   pip install openai        # if AGENTPRDIFF_JUDGE=openai (already installed if your agent uses OpenAI)
           # Without the matching SDK, semantic() raises ImportError at first
           # use and the case fails — louder than the silent fake_judge trap.
       - env:
@@ -659,9 +659,9 @@ jobs:
           # get?" ambiguous in CI logs. If your suite has no semantic()
           # graders, leave all three commented and CI runs free.
           #
-          #   AGENTGUARD_JUDGE: fake          # keyword matching, free
-          #   AGENTGUARD_JUDGE: anthropic     # real judge, cheaper; pair with ANTHROPIC_API_KEY below
-          #   AGENTGUARD_JUDGE: openai        # real judge; pair with OPENAI_API_KEY above
+          #   AGENTPRDIFF_JUDGE: fake          # keyword matching, free
+          #   AGENTPRDIFF_JUDGE: anthropic     # real judge, cheaper; pair with ANTHROPIC_API_KEY below
+          #   AGENTPRDIFF_JUDGE: openai        # real judge; pair with OPENAI_API_KEY above
           #
           # Pair the chosen judge with its key. Without a key, semantic()
           # falls back to fake_judge silently and you'll see PASS without

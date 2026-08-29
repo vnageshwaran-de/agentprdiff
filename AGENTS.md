@@ -529,15 +529,15 @@ This step exists because `semantic(...)` graders silently fall back to `fake_jud
 1. **Inspect the suite for `semantic(...)` calls.** `grep -n "semantic(" suites/<project>.py`. If the result is empty, skip the rest of this step — there is nothing to verify.
 
 2. **Pick the judge mode.** Three options, listed by cost and fidelity:
-   - `fake_judge` (free, keyword-matching). Set `AGENTGUARD_JUDGE=fake` in the workflow YAML. Acceptable when the rubric reduces cleanly to keywords; brittle otherwise.
-   - Real Anthropic judge (recommended for cost). `AGENTGUARD_JUDGE=anthropic` + `ANTHROPIC_API_KEY`.
-   - Real OpenAI judge. `AGENTGUARD_JUDGE=openai` + `OPENAI_API_KEY`.
+   - `fake_judge` (free, keyword-matching). Set `AGENTPRDIFF_JUDGE=fake` in the workflow YAML. Acceptable when the rubric reduces cleanly to keywords; brittle otherwise.
+   - Real Anthropic judge (recommended for cost). `AGENTPRDIFF_JUDGE=anthropic` + `ANTHROPIC_API_KEY`.
+   - Real OpenAI judge. `AGENTPRDIFF_JUDGE=openai` + `OPENAI_API_KEY`.
 
-   Selection precedence (`src/agentprdiff/graders/semantic.py:164`): explicit `AGENTGUARD_JUDGE` wins; otherwise the first key the env exposes wins; otherwise `fake_judge`. Set the explicit env var rather than relying on key-presence ordering — it eliminates the "which provider did I get?" ambiguity in CI logs.
+   Selection precedence (`src/agentprdiff/graders/semantic.py:164`): explicit `AGENTPRDIFF_JUDGE` wins; otherwise the first key the env exposes wins; otherwise `fake_judge`. Set the explicit env var rather than relying on key-presence ordering — it eliminates the "which provider did I get?" ambiguity in CI logs.
 
 3. **Document the mode in `suites/README.md`** under a heading literally called `## Semantic Judge Keys`. The section names the judge mode CI runs in, the env var(s) it sets, and how a local developer reproduces the same mode. Adopters and reviewers should be able to answer "are our semantic graders LLM-backed?" without grepping the workflow file.
 
-4. **Wire the env var into the workflow YAML.** The scaffold's `_TPL_WORKFLOW` already exposes `OPENAI_API_KEY` and (commented) `ANTHROPIC_API_KEY`. Add the explicit `AGENTGUARD_JUDGE: <mode>` line so the scaffold-implicit ordering doesn't decide judge mode for you. Confirm CI installs the matching SDK — the workflow installs `pip install -r requirements.txt agentprdiff`, which pulls in whatever the production agent already needs; if you chose a judge whose SDK isn't already a project dep (e.g. anthropic judge in an OpenAI-only project), add an explicit `pip install anthropic` step.
+4. **Wire the env var into the workflow YAML.** The scaffold's `_TPL_WORKFLOW` already exposes `OPENAI_API_KEY` and (commented) `ANTHROPIC_API_KEY`. Add the explicit `AGENTPRDIFF_JUDGE: <mode>` line so the scaffold-implicit ordering doesn't decide judge mode for you. Confirm CI installs the matching SDK — the workflow installs `pip install -r requirements.txt agentprdiff`, which pulls in whatever the production agent already needs; if you chose a judge whose SDK isn't already a project dep (e.g. anthropic judge in an OpenAI-only project), add an explicit `pip install anthropic` step.
 
 5. **Verify the chosen mode actually runs locally.** Set the env vars, run `agentprdiff check suites/<project>.py --case <a_case_with_semantic>`, and confirm the trace shows a non-zero `cost_usd` on the judge call (real judges) or a flat zero (fake_judge). If a real judge was chosen and the cost is zero, the silent fallback bit you — fix the env vars before recording baselines.
 
@@ -642,9 +642,9 @@ This is the single most common source of "I followed the steps and it doesn't wo
 
 | Env var | Effect |
 |---|---|
-| `AGENTGUARD_JUDGE=fake` | Force fake_judge (keyword matching). |
-| `AGENTGUARD_JUDGE=openai` or `OPENAI_API_KEY` set | OpenAI as judge. |
-| `AGENTGUARD_JUDGE=anthropic` or `ANTHROPIC_API_KEY` set | Anthropic as judge. |
+| `AGENTPRDIFF_JUDGE=fake` | Force fake_judge (keyword matching). |
+| `AGENTPRDIFF_JUDGE=openai` or `OPENAI_API_KEY` set | OpenAI as judge. |
+| `AGENTPRDIFF_JUDGE=anthropic` or `ANTHROPIC_API_KEY` set | Anthropic as judge. |
 | Nothing set | **Silent fallback to fake_judge.** |
 
 The silent fallback is the trap. Without a key, `semantic()` graders run keyword-matching and you'll see PASS without knowing the LLM judge never ran. Make this loud for adopters: if they're using `semantic()` graders and want a real judge, the key has to be set in *both* local dev and CI.
@@ -874,7 +874,7 @@ Before declaring the work done, verify all of these. The checklist mirrors the c
 - [ ] `agentprdiff check suites/<project_name>.py` exits 0 immediately after `record`. (If it doesn't, either the suite is non-deterministic — broaden graders — or the agent has a real regression — flag it to the user.)
 - [ ] `.github/workflows/agentprdiff.yml` exists, references the API-key secret, and has a fallback that skips cleanly when the secret is absent.
 - [ ] **You asked the user about API keys** (see [API keys](#api-keys--what-to-set-where-and-how-to-ask-the-user-about-them)): which env var the production agent reads, whether to use a real semantic judge in CI, and whether `.env` is gitignored. Update the workflow YAML's `env:` block to match.
-- [ ] **Semantic-judge mode is explicit, not implicit** (see [Step 5b](#step-5b--decide-and-document-the-semantic-judge-mode)). If `grep "semantic(" suites/<project>.py` returns hits, `suites/README.md` has a `## Semantic Judge Keys` section naming the mode (`fake_judge`, `anthropic`, or `openai`), the workflow YAML sets `AGENTGUARD_JUDGE=<mode>` explicitly, and a local trial run confirmed the chosen mode actually fired (non-zero cost for real judges, zero for fake). If no `semantic(...)` calls exist, the README still says so explicitly so the absence is deliberate.
+- [ ] **Semantic-judge mode is explicit, not implicit** (see [Step 5b](#step-5b--decide-and-document-the-semantic-judge-mode)). If `grep "semantic(" suites/<project>.py` returns hits, `suites/README.md` has a `## Semantic Judge Keys` section naming the mode (`fake_judge`, `anthropic`, or `openai`), the workflow YAML sets `AGENTPRDIFF_JUDGE=<mode>` explicitly, and a local trial run confirmed the chosen mode actually fired (non-zero cost for real judges, zero for fake). If no `semantic(...)` calls exist, the README still says so explicitly so the absence is deliberate.
 - [ ] **Installed CLI verified to support the documented commands.** You ran `agentprdiff check --help` (or `<venv>/bin/agentprdiff check --help`) in the target repo and confirmed `--case`, `--list`, `--skip`, and `agentprdiff review` all resolve. If any are missing, the dossier documents the local-source-checkout form (`PYTHONPATH=../agentprdiff/src .venv/bin/python -m agentprdiff.cli ...`) instead of the bare `agentprdiff` form.
 - [ ] You have NOT committed any baseline trace that records a real API key, customer data, or PII. Inspect at least one baseline JSON manually before committing. Run `git grep -E 'sk-[a-zA-Z0-9_-]{20,}'` over the staged baselines as a quick scan.
 - [ ] The diff matches the shape described in `docs/suite-layout.md` — five hand-written files, no production-code changes.

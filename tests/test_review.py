@@ -225,6 +225,7 @@ def _suite_without_semantic():
 
 def test_terminal_reporter_prints_judge_banner_when_semantic_used(tmp_path, monkeypatch):
     """``check`` output names the judge mode so silent fake_judge can't hide."""
+    monkeypatch.delenv("AGENTPRDIFF_JUDGE", raising=False)
     monkeypatch.delenv("AGENTGUARD_JUDGE", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -245,7 +246,7 @@ def test_terminal_reporter_prints_judge_banner_when_semantic_used(tmp_path, monk
 
 
 def test_review_reporter_prints_judge_banner_when_semantic_used(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENTGUARD_JUDGE", "fake")
+    monkeypatch.setenv("AGENTPRDIFF_JUDGE", "fake")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
@@ -259,7 +260,7 @@ def test_review_reporter_prints_judge_banner_when_semantic_used(tmp_path, monkey
     out = buf.getvalue()
 
     assert "semantic judge:" in out
-    assert "AGENTGUARD_JUDGE=fake" in out
+    assert "AGENTPRDIFF_JUDGE=fake" in out
 
 
 def test_no_judge_banner_when_suite_has_no_semantic(tmp_path):
@@ -280,7 +281,7 @@ def test_no_judge_banner_when_suite_has_no_semantic(tmp_path):
 
 
 def test_terminal_reporter_judge_banner_reflects_explicit_anthropic(tmp_path, monkeypatch):
-    monkeypatch.setenv("AGENTGUARD_JUDGE", "anthropic")
+    monkeypatch.setenv("AGENTPRDIFF_JUDGE", "anthropic")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 

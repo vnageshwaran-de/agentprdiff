@@ -93,8 +93,11 @@ Usually one of:
   current behavior is correct.
 - The grader's `name` changed (e.g. you switched from
   `contains("refund")` to `contains("Refund", case_sensitive=True)`).
-  The differ keys per-assertion regression detection by `grader_name`,
-  so a renamed grader looks new. Same fix: re-record.
+  Without a stable id the differ keys per-assertion regression detection
+  by `grader_name`, so a renamed grader looks new. Two fixes: re-record,
+  or (better, for long-lived assertions) give the grader a stable
+  `id=` — e.g. `contains("refund", id="mentions-refund")` — and rename
+  arguments freely; the differ matches by `id` when both sides have one.
 
 ## Adapter says "instrument_client expected an OpenAI-style client"
 
@@ -129,7 +132,7 @@ You probably hit the silent `fake_judge` fallback. Check the banner at
 the top of the run output:
 
 ```
-semantic judge: fake_judge (no AGENTGUARD_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)
+semantic judge: fake_judge (no AGENTPRDIFF_JUDGE, no OPENAI_API_KEY/ANTHROPIC_API_KEY — silent fallback)
 ```
 
 `fake_judge` matches keywords ≥ 4 chars. To get a real judge:
@@ -139,16 +142,16 @@ export OPENAI_API_KEY=sk-...
 # or
 export ANTHROPIC_API_KEY=sk-ant-...
 # or pin explicitly
-export AGENTGUARD_JUDGE=anthropic
+export AGENTPRDIFF_JUDGE=anthropic
 ```
 
 ## CI passes locally but fails in CI
 
 Almost always one of:
 
-- **Different `AGENTGUARD_JUDGE`.** Local has `OPENAI_API_KEY` set, CI
+- **Different `AGENTPRDIFF_JUDGE`.** Local has `OPENAI_API_KEY` set, CI
   uses `fake_judge`. Set both explicitly:
-  `AGENTGUARD_JUDGE=fake` (or `=anthropic`/`=openai` with the matching
+  `AGENTPRDIFF_JUDGE=fake` (or `=anthropic`/`=openai` with the matching
   secret) on both sides so the judge is identical.
 - **Different `pricing` table.** Local has `register_prices(...)` in a
   helper that CI doesn't import. Move the call into the suite file.

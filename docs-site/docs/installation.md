@@ -219,7 +219,7 @@ is fully self-contained — no API keys required.
 
 | Variable | Read by | Purpose |
 |---|---|---|
-| `AGENTGUARD_JUDGE` | `agentprdiff` (semantic grader) | `fake`, `openai`, or `anthropic`. Forces the default judge backend, ignoring autodetection. |
+| `AGENTPRDIFF_JUDGE` | `agentprdiff` (semantic grader) | `fake`, `openai`, or `anthropic`. Forces the default judge backend, ignoring autodetection. |
 | `OPENAI_API_KEY` | `openai_judge` (when selected); your agent | Real-LLM judge calls and any agent that uses the OpenAI SDK. |
 | `ANTHROPIC_API_KEY` | `anthropic_judge` (when selected); your agent | Real-LLM judge calls and any agent that uses the Anthropic SDK. |
 | Whatever your agent reads | your agent | `agentprdiff` does not touch your agent's keys; it just invokes the callable. |
@@ -229,9 +229,9 @@ is fully self-contained — no API keys required.
 When `semantic(...)` runs without an explicit `judge=` argument, the backend
 is chosen in this order:
 
-1. `AGENTGUARD_JUDGE=fake` → `fake_judge`
-2. `AGENTGUARD_JUDGE=openai` *or* `OPENAI_API_KEY` set → `openai_judge()`
-3. `AGENTGUARD_JUDGE=anthropic` *or* `ANTHROPIC_API_KEY` set → `anthropic_judge()`
+1. `AGENTPRDIFF_JUDGE=fake` → `fake_judge`
+2. `AGENTPRDIFF_JUDGE=openai` *or* `OPENAI_API_KEY` set → `openai_judge()`
+3. `AGENTPRDIFF_JUDGE=anthropic` *or* `ANTHROPIC_API_KEY` set → `anthropic_judge()`
 4. Otherwise → `fake_judge` (deterministic, free, used in CI without keys)
 
 Run `agentprdiff check` with at least one `semantic()` grader to see a

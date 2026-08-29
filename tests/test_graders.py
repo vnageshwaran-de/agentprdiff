@@ -122,6 +122,7 @@ class TestDescribeDefaultJudge:
     @pytest.fixture(autouse=True)
     def _clean_env(self, monkeypatch):
         # Strip any judge config the host might have so each case starts blank.
+        monkeypatch.delenv("AGENTPRDIFF_JUDGE", raising=False)
         monkeypatch.delenv("AGENTGUARD_JUDGE", raising=False)
         monkeypatch.delenv("OPENAI_API_KEY", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
@@ -132,18 +133,18 @@ class TestDescribeDefaultJudge:
         assert "silent fallback" in msg
 
     def test_explicit_fake(self, monkeypatch):
-        monkeypatch.setenv("AGENTGUARD_JUDGE", "fake")
-        assert describe_default_judge() == "fake_judge (AGENTGUARD_JUDGE=fake)"
+        monkeypatch.setenv("AGENTPRDIFF_JUDGE", "fake")
+        assert describe_default_judge() == "fake_judge (AGENTPRDIFF_JUDGE=fake)"
 
     def test_explicit_openai(self, monkeypatch):
-        monkeypatch.setenv("AGENTGUARD_JUDGE", "openai")
-        assert describe_default_judge() == "openai/gpt-4o-mini (AGENTGUARD_JUDGE=openai)"
+        monkeypatch.setenv("AGENTPRDIFF_JUDGE", "openai")
+        assert describe_default_judge() == "openai/gpt-4o-mini (AGENTPRDIFF_JUDGE=openai)"
 
     def test_explicit_anthropic(self, monkeypatch):
-        monkeypatch.setenv("AGENTGUARD_JUDGE", "anthropic")
+        monkeypatch.setenv("AGENTPRDIFF_JUDGE", "anthropic")
         msg = describe_default_judge()
         assert msg.startswith("anthropic/")
-        assert "AGENTGUARD_JUDGE=anthropic" in msg
+        assert "AGENTPRDIFF_JUDGE=anthropic" in msg
 
     def test_openai_key_alone_picks_openai(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
@@ -156,9 +157,24 @@ class TestDescribeDefaultJudge:
         assert "ANTHROPIC_API_KEY set" in msg
 
     def test_explicit_fake_overrides_openai_key(self, monkeypatch):
-        monkeypatch.setenv("AGENTGUARD_JUDGE", "fake")
+        monkeypatch.setenv("AGENTPRDIFF_JUDGE", "fake")
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-        assert describe_default_judge() == "fake_judge (AGENTGUARD_JUDGE=fake)"
+        assert describe_default_judge() == "fake_judge (AGENTPRDIFF_JUDGE=fake)"
+
+    def test_legacy_env_var_still_works_and_is_named(self, monkeypatch):
+        import importlib
+
+        sem = importlib.import_module("agentprdiff.graders.semantic")
+        monkeypatch.setattr(sem, "_warned_legacy_env", False)
+        monkeypatch.setenv("AGENTGUARD_JUDGE", "fake")
+        with pytest.warns(DeprecationWarning, match="AGENTGUARD_JUDGE is deprecated"):
+            msg = describe_default_judge()
+        assert msg == "fake_judge (AGENTGUARD_JUDGE=fake)"
+
+    def test_new_env_var_wins_over_legacy(self, monkeypatch):
+        monkeypatch.setenv("AGENTPRDIFF_JUDGE", "openai")
+        monkeypatch.setenv("AGENTGUARD_JUDGE", "fake")
+        assert describe_default_judge() == "openai/gpt-4o-mini (AGENTPRDIFF_JUDGE=openai)"
 
 
 class TestCaseUsesSemantic:

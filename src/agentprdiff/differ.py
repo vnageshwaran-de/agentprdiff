@@ -23,6 +23,7 @@ from .core import GradeResult, Trace
 
 class AssertionChange(BaseModel):
     grader_name: str
+    grader_id: str | None = None
     baseline_passed: bool | None  # None = grader didn't exist in baseline
     current_passed: bool
     current_reason: str = ""
@@ -100,16 +101,22 @@ def diff_traces(
         baseline_error=baseline.error if baseline else None,
     )
 
-    baseline_by_name: dict[str, bool] = {}
+    # Assertions are matched baseline<->current by stable grader_id when one
+    # was provided (the `id=` argument on grader factories), falling back to
+    # the display name. Matching by name alone means renaming an argument or
+    # rewording a semantic rubric shows up as a removed + added assertion —
+    # a documented source of false regressions.
+    baseline_by_key: dict[str, bool] = {}
     if baseline_results:
         for r in baseline_results:
-            baseline_by_name[r.grader_name] = r.passed
+            baseline_by_key[r.grader_id or r.grader_name] = r.passed
 
     for r in current_results:
         delta.assertion_changes.append(
             AssertionChange(
                 grader_name=r.grader_name,
-                baseline_passed=baseline_by_name.get(r.grader_name),
+                grader_id=r.grader_id,
+                baseline_passed=baseline_by_key.get(r.grader_id or r.grader_name),
                 current_passed=r.passed,
                 current_reason=r.reason,
             )

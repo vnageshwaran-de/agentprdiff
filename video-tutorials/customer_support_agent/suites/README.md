@@ -40,7 +40,7 @@ This suite uses `semantic(...)` graders in the following cases:
 
 **CI judge mode: `fake_judge` (keyword matching, free).**
 
-The CI workflow does NOT set `AGENTGUARD_JUDGE` or a judge-provider key, so
+The CI workflow does NOT set `AGENTPRDIFF_JUDGE` or a judge-provider key, so
 the semantic graders run in `fake_judge` mode — fast, free, but only keyword
 matching. The rubric strings are written to pass under keyword matching for the
 happy path; they add a human-readable description of intent for reviewers.
@@ -49,18 +49,18 @@ To switch to a real LLM judge locally or in CI:
 
 ```bash
 # Anthropic judge (recommended — cheaper)
-export AGENTGUARD_JUDGE=anthropic
+export AGENTPRDIFF_JUDGE=anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
 agentprdiff check suites/customer_support.py
 
 # OpenAI judge
-export AGENTGUARD_JUDGE=openai
+export AGENTPRDIFF_JUDGE=openai
 export OPENAI_API_KEY=sk-...
 agentprdiff check suites/customer_support.py
 ```
 
 Add the corresponding secret in GitHub Settings → Secrets and variables →
-Actions, then add `AGENTGUARD_JUDGE: anthropic` and
+Actions, then add `AGENTPRDIFF_JUDGE: anthropic` and
 `ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}` to the workflow YAML's
 `env:` block.
 

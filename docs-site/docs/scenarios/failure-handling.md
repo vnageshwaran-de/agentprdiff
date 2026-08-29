@@ -245,7 +245,7 @@ The judge or your agent's SDK fails with a connection error. `fake_judge`
 becomes the sane default:
 
 ```bash
-AGENTGUARD_JUDGE=fake agentprdiff check suite.py
+AGENTPRDIFF_JUDGE=fake agentprdiff check suite.py
 ```
 
 For agents that can't run without network, gate the entire suite on

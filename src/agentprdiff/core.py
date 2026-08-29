@@ -99,6 +99,11 @@ class GradeResult(BaseModel):
 
     passed: bool
     grader_name: str
+    # Optional stable identity for baseline matching. When set (via the
+    # `id=` argument on grader factories), diffs match assertions by this id
+    # instead of the display name, so renaming an argument or rewording a
+    # rubric doesn't register as a removed + added assertion.
+    grader_id: str | None = None
     reason: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 

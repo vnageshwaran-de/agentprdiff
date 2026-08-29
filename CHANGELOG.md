@@ -8,6 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `agentprdiff check --strict-judge`: fails the run when any `semantic()`
+  grader was judged by `fake_judge` via **silent fallback** (no judge env
+  var and no provider API key). A green build whose semantic assertions
+  were graded by keyword matching is not a green build. Explicit opt-in
+  via `AGENTPRDIFF_JUDGE=fake` still passes. Strict mode will become the
+  default in v1.0. Silent-fallback grading is also flagged in
+  `GradeResult.metadata["silent_fallback"]` for programmatic use.
+- Stable assertion identity: every grader factory now accepts an optional
+  `id=` keyword (e.g. `contains("refund", id="mentions-refund")`). Diffs
+  match assertions by `id` when both sides have one, falling back to the
+  display name — so renaming an argument or rewording a semantic rubric
+  no longer registers as a removed + added assertion (a documented source
+  of false regressions). `GradeResult` and `AssertionChange` gain a
+  `grader_id` field.
+- Baselines now persist their grader verdicts
+  (`trace.metadata["grader_results"]`), recorded at `record` time. `check`
+  reads the stored verdicts instead of re-running graders against the
+  baseline — which previously meant a paid, nondeterministic LLM-judge
+  call against the baseline on every check. Legacy baselines without
+  stored verdicts fall back to the old re-run path; re-record to migrate.
+- `cost_lt_usd` flags suspicious passes: when a trace made LLM calls but
+  recorded `$0.0000` total cost (usually a model missing from the pricing
+  table), the pass is annotated in `reason` and
+  `metadata["zero_cost_with_llm_calls"]` instead of silently succeeding.
+
+### Changed
+
+- The judge-selection env var is now `AGENTPRDIFF_JUDGE`. The legacy
+  `AGENTGUARD_JUDGE` name (from a pre-release name of this project) still
+  works and emits a `DeprecationWarning`; it will be removed in v1.0.
+  When both are set, `AGENTPRDIFF_JUDGE` wins. The judge banner names
+  whichever variable was actually used.
+
+### Fixed
+
+- A mypy type error in the review reporter's assertion-pairing code;
+  the reporter now pairs assertions by stable `grader_id` when present.
+
 ## [0.4.0] — 2026-08-29
 
 Minor release bundling the three feature PRs merged since 0.3.1, plus

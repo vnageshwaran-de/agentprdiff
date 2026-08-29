@@ -138,7 +138,7 @@ def _maybe_print_judge_banner(console: Console, report: RunReport) -> None:
     Skipped silently when no case has a semantic grader — most suites don't
     use them and the banner would be noise. When a suite *does* have semantic
     coverage, the banner makes the silent fake_judge fallback (no key, no
-    AGENTGUARD_JUDGE) loud at the moment of execution rather than buried in
+    AGENTPRDIFF_JUDGE) loud at the moment of execution rather than buried in
     trace JSON. Coloured yellow when fake_judge would run so the warning is
     visually distinct from real-judge runs.
     """
@@ -312,15 +312,16 @@ class ReviewReporter:
         table.add_column("grader")
         table.add_column("reason", overflow="fold")
 
-        # We index grader_results by name so we can pair them up with the
-        # delta's AssertionChange (which already knows baseline pass/fail).
-        deltas_by_name: dict[str, AssertionChange] = {}
+        # We index grader_results by stable id (falling back to name) so we
+        # can pair them up with the delta's AssertionChange (which already
+        # knows baseline pass/fail).
+        deltas_by_key: dict[str, AssertionChange] = {}
         if cr.delta is not None:
-            for ac in cr.delta.assertion_changes:
-                deltas_by_name[ac.grader_name] = ac
+            for change in cr.delta.assertion_changes:
+                deltas_by_key[change.grader_id or change.grader_name] = change
 
         for r in cr.grader_results:
-            ac = deltas_by_name.get(r.grader_name)
+            ac: AssertionChange | None = deltas_by_key.get(r.grader_id or r.grader_name)
             now_mark = self._mark(r.passed, regression=False)
             if has_baseline_marks:
                 was = ac.baseline_passed if ac is not None else None
