@@ -8,6 +8,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-08-29
+
+Minor release bundling the three feature PRs merged since 0.3.1, plus
+the Studio hardening work. All changes are additive; no breaking API
+changes.
+
+### Added
+
+- `http_judge` grader backend for custom LLM-as-judge endpoints, so
+  suites can score traces against a self-hosted or third-party judge
+  service instead of the built-in providers (#7).
+- Field-level trace masking for PII and other sensitive data, letting
+  suites redact specific fields from recorded traces before they are
+  stored or diffed (#8).
+- Pluggable `TraceStore` interface with an `InMemoryTraceStore`
+  implementation, decoupling trace persistence from the runner so
+  custom storage backends can be dropped in (#9).
+- Studio: private-repo git auth (SSH + HTTPS PAT), adapter and
+  `extend_existing` scan strategies, path-to-import sanitization with
+  import preflight, hardened preflight pipeline with scan manifest and
+  auto-install preview.
+
+### Fixed
+
+- Ruff lint cleanups in the new masking and http_judge modules and
+  their tests; suppressed the intentional B027 warning on the no-op
+  `ensure_initialized` hook.
+
 ## [0.3.1] — 2026-05-17
 
 Patch release. Fixes a long-standing drift between `pyproject.toml`'s
