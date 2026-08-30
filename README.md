@@ -94,6 +94,8 @@ That's the whole product. Six CLI commands (`init`, `record`, `check`, `review`,
 | Human-readable diff of what changed | n/a | rare | **yes** |
 | Works without API keys | yes | no | **yes** (deterministic graders + fake judge) |
 
+For the tool-by-tool map — promptfoo, DeepEval, Braintrust, RAGAS, including when to use *them* instead — see [How It Compares](https://agentprdiff.dev/comparison/).
+
 The value is in the combination: deterministic assertions for the 80% of behaviors you can encode as rules ("this tool was called", "this word appeared", "cost stayed under $0.02"), plus a semantic grader for the 20% that need a judge — with a fake-judge fallback so your CI stays green and free when API keys aren't available.
 
 ## The workflow

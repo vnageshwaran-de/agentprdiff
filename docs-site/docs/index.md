@@ -76,6 +76,7 @@ what it did, and compares runs across time.
 | Stable assertion identity | Give graders an `id=` and renames stop reading as removed + added assertions. |
 | **GitHub Action** | `uses: vnageshwaran-de/agentprdiff@main` posts the behavioral diff as a living PR comment — see [CI/CD](./scenarios/ci-cd.md). |
 | **Reproducible benchmark** | A [model-swap case study](./benchmark.md) with committed results, re-runnable for cents. |
+| Honest comparison | [How It Compares](./comparison.md) — vs promptfoo, DeepEval, Braintrust, including when to use them instead. |
 | OpenAI-compatible providers | Groq, Gemini, OpenRouter, Ollama, vLLM, Together, Fireworks, DeepInfra. |
 | Case filters | `--case`, `--skip`, globs, negation, `--list` — *like `pytest -k`*. |
 | Local iteration loop | `agentprdiff review` always exits 0 with a verbose per-case panel. |
@@ -128,6 +129,7 @@ If you'd rather hand-write the suite, the same Quickstart has a
 ## Where to next
 
 - New here? Jump to the [Quickstart](./quickstart.md).
+- Coming from promptfoo, DeepEval, or Braintrust? [How It Compares](./comparison.md).
 - Curious about the design? [Core concepts](./concepts.md).
 - Want runnable patterns? [Scenarios & examples](./scenarios/simple-suite.md).
 - Looking for a function or flag? [API](./api/python.md) or
