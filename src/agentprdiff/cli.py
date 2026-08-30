@@ -151,6 +151,18 @@ def cmd_record(
         "AGENTPRDIFF_JUDGE=fake still passes."
     ),
 )
+@click.option(
+    "--runs",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help=(
+        "Execute each case this many times; a case passes when at least its "
+        "min_pass_rate fraction of attempts fully pass (default 1.0 — all "
+        "attempts). The flakiness guard for stochastic agents: e.g. --runs 3 "
+        "with case(..., min_pass_rate=0.6) tolerates one wobble out of three."
+    ),
+)
 @click.pass_context
 def cmd_check(
     ctx: click.Context,
@@ -161,10 +173,11 @@ def cmd_check(
     list_only: bool,
     fail_on_regression: bool,
     strict_judge: bool,
+    runs: int,
 ) -> None:
     """Run every suite in SUITE_FILE and diff against saved baselines."""
     store: BaselineStore = ctx.obj["store"]
-    runner = Runner(store)
+    runner = Runner(store, runs=runs)
     terminal = TerminalReporter()
 
     suites_all = load_suites(suite_file)

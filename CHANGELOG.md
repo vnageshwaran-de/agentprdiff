@@ -10,6 +10,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Multi-run flakiness handling: `agentprdiff check --runs N` executes
+  each case N times, and a case passes when at least its
+  `min_pass_rate` fraction of attempts fully pass —
+  `case(..., min_pass_rate=0.6)` with `--runs 3` tolerates one
+  stochastic wobble out of three. Defaults (`--runs 1`,
+  `min_pass_rate=1.0`) preserve the exact single-shot behavior. Diffs
+  and reports use a representative attempt (the last fully-passing one
+  when any exists, otherwise the last), the terminal report shows the
+  tally (`2/3 runs passed (required ≥ 60%)`), and `CaseReport` gains
+  `runs_total` / `runs_passed` / `min_pass_rate` and a `pass_rate`
+  property. `record` always runs once — a baseline is a single
+  known-good trace.
+
 - `agentprdiff check --strict-judge`: fails the run when any `semantic()`
   grader was judged by `fake_judge` via **silent fallback** (no judge env
   var and no provider API key). A green build whose semantic assertions

@@ -127,6 +127,11 @@ class Case(BaseModel):
     input: Any
     expect: list[Grader] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    # Minimum fraction of attempts that must fully pass when the runner
+    # executes the case more than once (`check --runs N`). 1.0 = every
+    # attempt must pass (the single-run behavior). E.g. 0.6 with --runs 3
+    # tolerates one stochastic wobble out of three.
+    min_pass_rate: float = Field(default=1.0, gt=0.0, le=1.0)
 
 
 # An Agent is any callable `(input) -> (output, Trace)`. If the user's agent
@@ -159,12 +164,28 @@ def suite(name: str, agent: AgentFn, cases: list[Case], description: str = "") -
     return Suite(name=name, agent=agent, cases=cases, description=description)
 
 
-def case(name: str, input: Any, expect: list[Grader], tags: list[str] | None = None) -> Case:
+def case(
+    name: str,
+    input: Any,
+    expect: list[Grader],
+    tags: list[str] | None = None,
+    min_pass_rate: float = 1.0,
+) -> Case:
     """Create a Case.
+
+    `min_pass_rate` only matters with `check --runs N` (N > 1): the case
+    passes when at least this fraction of attempts fully pass. Defaults to
+    1.0 — every attempt must pass.
 
     >>> c = case("refund", input="I want a refund", expect=[contains("refund")])
     """
-    return Case(name=name, input=input, expect=expect or [], tags=tags or [])
+    return Case(
+        name=name,
+        input=input,
+        expect=expect or [],
+        tags=tags or [],
+        min_pass_rate=min_pass_rate,
+    )
 
 
 # ---------------------------------------------------------------------------

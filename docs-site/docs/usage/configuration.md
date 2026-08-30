@@ -34,8 +34,49 @@ top-level Click group.
 | `record`, `check` | `--json-out PATH` | — | Write a JSON report to `PATH`. Overwrites every run. |
 | `check` | `--fail-on/--no-fail-on` | `--fail-on` | When `--no-fail-on`, regressions are reported but exit code stays 0. |
 | `check` | `--strict-judge` | off | Exit 1 when any `semantic()` grader was judged by `fake_judge` via **silent fallback** (no judge env var, no API key). Recommended in CI; will become the default in v1.0. Explicit `AGENTPRDIFF_JUDGE=fake` still passes. |
+| `check` | `--runs N` | `1` | Execute each case N times; the case passes when at least its `min_pass_rate` fraction of attempts fully pass. The flakiness guard for stochastic agents — see below. |
 | `scaffold` | `--recipe {sync-openai,async-openai,stubbed}` | `sync-openai` | Picks the eval-wrapper template. |
 | `scaffold` | `--dir PATH` | `.` | Project root to scaffold into. |
+
+## Flakiness: `--runs` + `min_pass_rate`
+
+Agents are stochastic — even at `temperature=0`, providers don't guarantee
+identical outputs, so a borderline case will intermittently fail a
+single-shot check. Intermittent false failures are how teams quietly stop
+running a CI gate; this is the escape valve:
+
+```python
+case(
+    name="refund_happy_path",
+    input="I want a refund for order #1234",
+    expect=[contains("refund"), tool_called("lookup_order")],
+    min_pass_rate=0.6,          # at least 60 % of attempts must fully pass
+)
+```
+
+```bash
+agentprdiff check suite.py --runs 3    # 2-of-3 passes → case passes
+```
+
+Semantics:
+
+- **An attempt "fully passes"** when every grader passes and the agent
+  didn't raise. The case passes when
+  `passed_attempts / total_attempts >= min_pass_rate`.
+- **`min_pass_rate` defaults to `1.0`** — every attempt must pass, so
+  behavior without `--runs` (or with `--runs 1`) is exactly the single-shot
+  behavior you had before.
+- **Diffs use a representative attempt**: the last fully-passing attempt
+  when one exists (the behavior you're accepting), otherwise the last
+  attempt (so the report shows what went wrong). The terminal report shows
+  the tally, e.g. `2/3 runs passed (required ≥ 60%)`.
+- **`record` always runs once** — a baseline is a single known-good trace.
+- Reserve low `min_pass_rate` values for cases with a genuinely stochastic
+  step. A deterministic assertion that needs `0.5` to stay green is telling
+  you the assertion (or the agent) is wrong.
+
+Cost note: `--runs 3` triples agent invocations (and judge calls for
+`semantic()` graders) for every case, so scope it to the suites that need it.
 
 ## Environment variables
 

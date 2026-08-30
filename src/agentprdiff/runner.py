@@ -36,7 +36,13 @@ def _load_baseline_results(baseline: Trace) -> list[GradeResult] | None:
 
 
 class CaseReport(BaseModel):
-    """Per-case outcome within a RunReport."""
+    """Per-case outcome within a RunReport.
+
+    With ``check --runs N`` (N > 1) the case is executed N times;
+    ``trace`` and ``grader_results`` then belong to the *representative*
+    attempt — the last fully-passing attempt when one exists, otherwise the
+    last attempt — and ``runs_total`` / ``runs_passed`` carry the tally.
+    """
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -45,11 +51,18 @@ class CaseReport(BaseModel):
     trace: Trace
     grader_results: list[GradeResult]
     delta: TraceDelta | None = None
+    runs_total: int = 1
+    runs_passed: int = 1
+    min_pass_rate: float = 1.0
+
+    @property
+    def pass_rate(self) -> float:
+        return self.runs_passed / self.runs_total if self.runs_total else 0.0
 
     @property
     def passed(self) -> bool:
-        """All graders passed for the current run."""
-        return all(r.passed for r in self.grader_results) and self.trace.error is None
+        """Enough attempts fully passed to meet the case's min_pass_rate."""
+        return self.pass_rate >= self.min_pass_rate
 
     @property
     def has_regression(self) -> bool:
@@ -88,10 +101,19 @@ class RunReport(BaseModel):
 
 
 class Runner:
-    """Runs suites in record or check mode."""
+    """Runs suites in record or check mode.
 
-    def __init__(self, store: BaselineStore | TraceStore) -> None:
+    ``runs`` (default 1) makes `check` execute each case that many times and
+    judge it against its ``min_pass_rate`` — the flakiness guard for
+    stochastic agents. `record` always runs once: a baseline is a single
+    known-good trace.
+    """
+
+    def __init__(self, store: BaselineStore | TraceStore, *, runs: int = 1) -> None:
+        if runs < 1:
+            raise ValueError(f"runs must be >= 1, got {runs}")
         self.store = store
+        self.runs = runs
 
     # ------------------------------------------------------------------ api
 
@@ -108,14 +130,33 @@ class Runner:
         run_id = self.store.fresh_run_id()
         report = RunReport(suite_name=suite.name, mode=mode)
 
+        runs = self.runs if mode == "check" else 1
         for case in suite.cases:
-            trace = run_agent(
-                suite.agent,
-                suite_name=suite.name,
-                case_name=case.name,
-                input_value=case.input,
+            # Execute the case `runs` times; each attempt is (trace, results,
+            # fully_passed). The representative attempt — used for baseline
+            # diffing and reporting — is the last fully-passing one when any
+            # exists (the behavior we accept), otherwise the last attempt
+            # (so the report shows what went wrong).
+            attempts: list[tuple[Trace, list[GradeResult], bool]] = []
+            for _ in range(runs):
+                attempt_trace = run_agent(
+                    suite.agent,
+                    suite_name=suite.name,
+                    case_name=case.name,
+                    input_value=case.input,
+                )
+                attempt_results = [g(attempt_trace) for g in case.expect]
+                fully_passed = (
+                    all(r.passed for r in attempt_results)
+                    and attempt_trace.error is None
+                )
+                attempts.append((attempt_trace, attempt_results, fully_passed))
+
+            runs_passed = sum(1 for _, _, ok in attempts if ok)
+            representative = next(
+                (a for a in reversed(attempts) if a[2]), attempts[-1]
             )
-            grader_results = [g(trace) for g in case.expect]
+            trace, grader_results, _ = representative
             # Persist grader results inside the trace so baselines are truly
             # frozen: check mode reads the recorded verdicts instead of
             # re-running graders against the baseline (which, for semantic
@@ -153,6 +194,9 @@ class Runner:
                     trace=trace,
                     grader_results=grader_results,
                     delta=delta,
+                    runs_total=runs,
+                    runs_passed=runs_passed,
+                    min_pass_rate=case.min_pass_rate,
                 )
             )
         return report

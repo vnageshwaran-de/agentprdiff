@@ -56,6 +56,12 @@ class TerminalReporter:
             cost_cell = ""
             latency_cell = ""
             notes = []
+            if cr.runs_total > 1:
+                style = "green" if cr.passed else "red"
+                notes.append(
+                    f"[{style}]{cr.runs_passed}/{cr.runs_total} runs passed[/{style}] "
+                    f"(required ≥ {cr.min_pass_rate:.0%})"
+                )
             if cr.delta is not None:
                 if cr.delta.cost_delta_usd:
                     cost_cell = _format_delta(cr.delta.cost_delta_usd, "${:+.4f}")
