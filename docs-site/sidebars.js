@@ -46,11 +46,17 @@ module.exports = {
         "api/adapters",
       ],
     },
-    "architecture",
-    "best-practices",
-    "troubleshooting",
-    "faq",
-    "contributing",
-    "roadmap",
+    {
+      type: "category",
+      label: "Guides",
+      collapsed: false,
+      items: ["architecture", "best-practices", "troubleshooting", "faq"],
+    },
+    {
+      type: "category",
+      label: "Project",
+      collapsed: false,
+      items: ["contributing", "roadmap"],
+    },
   ],
 };
