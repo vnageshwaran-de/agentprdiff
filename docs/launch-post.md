@@ -19,7 +19,7 @@ agents: a model swap, a prompt tweak, or a vendor change silently alters
 agent behavior, and nobody finds out until production.
 
 To show the failure mode concretely, I ran a controlled experiment
-[write-up: https://agentprdiff.dev/benchmark-writeup]: two realistic agents
+[write-up: https://agentprdiff.dev/benchmark/]: two realistic agents
 (a tool-calling support agent with a refund guardrail, and a strict-JSON
 extraction agent), behavioral baselines recorded on claude-sonnet, then the
 natural cost downgrade to claude-haiku.
