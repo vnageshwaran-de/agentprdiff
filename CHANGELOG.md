@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-08-30
+
+The "trustworthy green builds" release: strict judging, stable assertion
+identity, frozen baselines, a flakiness guard, parallel execution, async
+agents, and an official GitHub Action that posts the behavioral diff on
+pull requests.
+
 ### Added
 
 - `async def` agents are supported transparently: `run_agent` resolves
@@ -30,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stdlib-only comment script, graceful fallback to job-log output on
   fork PRs). Inputs cover suites/version/install/root/runs/strict-judge/
   comment/github-token/python-version; output `regressed`. Requires
-  agentprdiff ≥ 0.5.0 on PyPI — release before advertising the action.
+  agentprdiff ≥ 0.5.0.
 - `record` and `check` now accept multiple suite files
   (`agentprdiff check suites/*.py` works as the docs always implied).
 - `--json-out` now writes every suite's report from the invocation as
