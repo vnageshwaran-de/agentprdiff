@@ -7,6 +7,7 @@ module.exports = {
     "installation",
     "quickstart",
     "concepts",
+    "benchmark",
     {
       type: "category",
       label: "Usage Guide",

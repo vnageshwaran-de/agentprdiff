@@ -1,4 +1,12 @@
-# We swapped Claude Sonnet for Haiku under two agents. Every answer was right — and it still would have broken production.
+---
+id: benchmark
+title: "The Benchmark: Sonnet → Haiku"
+sidebar_position: 5
+---
+
+# We swapped Claude Sonnet for Haiku under two agents
+
+**Every answer was right — and it still would have broken production.**
 
 *By Vinoth Nageshwaran. Reproducible: every number below comes from
 [`benchmark/`](https://github.com/vnageshwaran-de/agentprdiff/tree/main/benchmark)

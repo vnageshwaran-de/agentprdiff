@@ -106,6 +106,7 @@ nav:
   - Installation: installation.md
   - Quickstart: quickstart.md
   - Core Concepts: concepts.md
+  - The Benchmark: benchmark.md
   - Usage Guide:
       - Basic Usage: usage/basic.md
       - Advanced Usage: usage/advanced.md
