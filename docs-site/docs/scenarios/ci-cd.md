@@ -10,7 +10,46 @@ A regression catcher you can't run in CI is a regression catcher you
 won't run. Wire `agentprdiff check` into the same workflow as your unit
 tests.
 
-## GitHub Actions (recommended)
+## The official GitHub Action (easiest)
+
+The fastest path: one step that installs agentprdiff, runs `check` on your
+suites, and posts the behavioral diff — assertion flips, cost/latency
+deltas, output diffs — **as a comment on the pull request**, updated in
+place on every push:
+
+```yaml title=".github/workflows/agents.yml"
+name: agent-regression
+on: [pull_request]
+permissions:
+  contents: read
+  pull-requests: write   # needed to post the behavioral-diff comment
+jobs:
+  agentprdiff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vnageshwaran-de/agentprdiff@main
+        with:
+          suites: "suites/*.py"
+          runs: "1"              # bump to 3 + min_pass_rate for flaky cases
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AGENTPRDIFF_JUDGE: anthropic
+```
+
+Reviewers see the diff where they already are — in the PR — instead of
+digging through job logs. Inputs: `suites`, `version` (pip spec, e.g.
+`==0.5.0`), `install` (set `"false"` if your workflow already installs
+agentprdiff), `root`, `runs`, `strict-judge` (default `"true"`),
+`comment`, `github-token`, `python-version`; output `regressed` is
+`"true"`/`"false"`. Requires agentprdiff ≥ 0.5.0. Notes: fork PRs get a
+read-only token, so the comment is skipped and the diff stays in the job
+log; the action pins nothing about your agent's dependencies — install
+those yourself before the action step, with `install: "false"` if they
+include agentprdiff.
+
+## Rolling your own workflow
 
 ```yaml title=".github/workflows/agents.yml"
 name: agent-regression

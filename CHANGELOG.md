@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Official GitHub Action (`uses: vnageshwaran-de/agentprdiff@main`): a
+  composite action at the repo root that installs agentprdiff, runs
+  `check` over your suites, and posts the behavioral diff — assertion
+  flips, cost/latency deltas, output diffs, multi-run tallies — as a
+  single living comment on the pull request (updated in place per push,
+  stdlib-only comment script, graceful fallback to job-log output on
+  fork PRs). Inputs cover suites/version/install/root/runs/strict-judge/
+  comment/github-token/python-version; output `regressed`. Requires
+  agentprdiff ≥ 0.5.0 on PyPI — release before advertising the action.
+- `record` and `check` now accept multiple suite files
+  (`agentprdiff check suites/*.py` works as the docs always implied).
+- `--json-out` now writes every suite's report from the invocation as
+  `{"reports": [...]}`; previously each suite overwrote the same file so
+  only the last survived. Consumers of the old single-suite envelope
+  should read the `reports` list instead.
+
 - Multi-run flakiness handling: `agentprdiff check --runs N` executes
   each case N times, and a case passes when at least its
   `min_pass_rate` fraction of attempts fully pass —

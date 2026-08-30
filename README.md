@@ -77,7 +77,8 @@ That's the whole product. Five CLI commands (`init`, `record`, `check`, `review`
 - **10 batteries-included graders** — `contains`, `contains_any`, `regex_match`, `tool_called`, `tool_sequence`, `no_tool_called`, `output_length_lt`, `latency_lt_ms`, `cost_lt_usd`, `semantic` (LLM-as-judge with pluggable backend).
 - **Baseline store** — JSON files under `.agentprdiff/baselines/`, meant to be **committed**. Reviewers see trace changes in pull requests.
 - **Diff engine** — per-case `TraceDelta` with assertion pass/fail changes, cost delta, latency delta, tool-sequence changes, and a unified output diff.
-- **CI-ready CLI** — exit 1 on regression, `--json-out` for artifact archiving, Rich-formatted terminal output.
+- **CI-ready CLI** — exit 1 on regression, `--json-out` for artifact archiving, Rich-formatted terminal output, `--strict-judge` so a missing judge key can't green-light keyword matching, and `--runs N` + per-case `min_pass_rate` so one stochastic wobble doesn't fail the build.
+- **GitHub Action with PR comments** — `uses: vnageshwaran-de/agentprdiff@main` runs `check` and posts the behavioral diff (assertion flips, cost/latency deltas, output diffs) as a living comment on the pull request. [Docs](https://agentprdiff.dev/scenarios/ci-cd/).
 - **Zero SDK lock-in** — works with OpenAI, Anthropic, Gemini, Bedrock, LangChain, LangGraph, LlamaIndex, Vercel AI SDK, custom wrappers — if you can wrap your agent in a function, `agentprdiff` can test it.
 - **One-line SDK adapters** — `with instrument_client(client) as trace:` automatically records every LLM and tool call when you're on the OpenAI Python SDK (sync **or** async — `AsyncOpenAI` is supported by the same context manager) or any OpenAI-compatible provider (Groq / Gemini / OpenRouter / Ollama / vLLM / Together / Fireworks / DeepInfra) or the Anthropic SDK. No manual `Trace` wiring required.
 

@@ -113,9 +113,9 @@ class TerminalReporter:
 class JsonReporter:
     """Write a stable JSON envelope suitable for CI artifact archiving."""
 
-    def render(self, report: RunReport, path: Path) -> Path:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {
+    @staticmethod
+    def _envelope(report: RunReport) -> dict:
+        return {
             "suite": report.suite_name,
             "mode": report.mode,
             "summary": {
@@ -126,6 +126,22 @@ class JsonReporter:
             },
             "cases": [cr.model_dump(mode="json") for cr in report.case_reports],
         }
+
+    def render_many(self, reports: list[RunReport], path: Path) -> Path:
+        """Write every suite's report from one CLI invocation into a single
+        file: ``{"reports": [<envelope>, ...]}``.
+
+        This is what `--json-out` uses — previously each suite in a file
+        overwrote the same path, so only the last suite's report survived.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"reports": [self._envelope(r) for r in reports]}
+        path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        return path
+
+    def render(self, report: RunReport, path: Path) -> Path:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = self._envelope(report)
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         return path
 

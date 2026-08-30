@@ -1,0 +1,131 @@
+name: "agentprdiff"
+description: >-
+  Snapshot-test LLM agent behavior in CI. Runs `agentprdiff check` against
+  your committed baselines and posts the behavioral diff — assertion flips,
+  cost/latency deltas, output diffs — as a comment on the pull request.
+author: "Vinoth Nageshwaran"
+branding:
+  icon: "git-pull-request"
+  color: "green"
+
+inputs:
+  suites:
+    description: >-
+      Space-separated suite files or glob patterns to check
+      (e.g. "suites/*.py" or "suites/billing.py suites/support.py").
+    required: false
+    default: "suites/*.py"
+  version:
+    description: >-
+      pip version spec for agentprdiff (e.g. "==0.5.0"). Empty installs the
+      latest release. Ignored when install is "false".
+    required: false
+    default: ""
+  install:
+    description: >-
+      Whether to pip-install agentprdiff. Set "false" if your workflow
+      already installed it (e.g. from your own requirements).
+    required: false
+    default: "true"
+  root:
+    description: "Baseline store directory (the --root flag)."
+    required: false
+    default: ".agentprdiff"
+  runs:
+    description: >-
+      Execute each case this many times; a case passes when at least its
+      min_pass_rate fraction of attempts fully pass.
+    required: false
+    default: "1"
+  strict-judge:
+    description: >-
+      Fail when a semantic() grader silently fell back to fake_judge
+      (no judge env var, no API key). Strongly recommended.
+    required: false
+    default: "true"
+  comment:
+    description: "Post/update the behavioral-diff comment on the PR."
+    required: false
+    default: "true"
+  github-token:
+    description: "Token used to post the PR comment."
+    required: false
+    default: ${{ github.token }}
+  python-version:
+    description: "Python version to set up (needs >= 3.10)."
+    required: false
+    default: "3.12"
+
+outputs:
+  regressed:
+    description: '"true" when any suite regressed, else "false".'
+    value: ${{ steps.check.outputs.regressed }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install agentprdiff
+      if: inputs.install == 'true'
+      shell: bash
+      run: python -m pip install --quiet "agentprdiff${{ inputs.version }}"
+
+    - name: Run agentprdiff check
+      id: check
+      shell: bash
+      run: |
+        set -uo pipefail
+        report_dir="${RUNNER_TEMP}/agentprdiff-reports"
+        mkdir -p "$report_dir"
+        echo "report_dir=$report_dir" >> "$GITHUB_OUTPUT"
+
+        flags=(--runs "${{ inputs.runs }}")
+        if [ "${{ inputs.strict-judge }}" = "true" ]; then
+          flags+=(--strict-judge)
+        fi
+
+        shopt -s nullglob
+        files=()
+        for pattern in ${{ inputs.suites }}; do
+          for f in $pattern; do files+=("$f"); done
+        done
+        if [ ${#files[@]} -eq 0 ]; then
+          echo "::error::no suite files matched: ${{ inputs.suites }}"
+          exit 1
+        fi
+
+        status=0
+        i=0
+        for f in "${files[@]}"; do
+          i=$((i+1))
+          agentprdiff --root "${{ inputs.root }}" check "$f" \
+            --json-out "$report_dir/report-$i.json" "${flags[@]}" || status=1
+        done
+
+        if [ "$status" -ne 0 ]; then
+          echo "regressed=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "regressed=false" >> "$GITHUB_OUTPUT"
+        fi
+        # Don't fail yet — post the comment first; the last step fails the job.
+        exit 0
+
+    - name: Post behavioral diff on the PR
+      if: inputs.comment == 'true' && github.event_name == 'pull_request'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: >-
+        python "${GITHUB_ACTION_PATH}/scripts/gha_pr_comment.py"
+        "${{ steps.check.outputs.report_dir }}"
+
+    - name: Fail on regression
+      if: steps.check.outputs.regressed == 'true'
+      shell: bash
+      run: |
+        echo "::error::agentprdiff detected behavioral regressions — see the PR comment / logs above."
+        exit 1

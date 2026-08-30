@@ -87,7 +87,12 @@ def cmd_init(ctx: click.Context) -> None:
 
 
 @main.command("record")
-@click.argument("suite_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument(
+    "suite_files",
+    nargs=-1,
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
 @click.option("--json-out", type=click.Path(path_type=Path), help="Write JSON report to this path.")
 @_CASE_OPTION
 @_SKIP_OPTION
@@ -95,18 +100,18 @@ def cmd_init(ctx: click.Context) -> None:
 @click.pass_context
 def cmd_record(
     ctx: click.Context,
-    suite_file: Path,
+    suite_files: tuple[Path, ...],
     json_out: Path | None,
     case_patterns: tuple[str, ...],
     skip_patterns: tuple[str, ...],
     list_only: bool,
 ) -> None:
-    """Run every suite in SUITE_FILE and save each trace as the baseline."""
+    """Run every suite in SUITE_FILES and save each trace as the baseline."""
     store: BaselineStore = ctx.obj["store"]
     runner = Runner(store)
     terminal = TerminalReporter()
 
-    suites_all = load_suites(suite_file)
+    suites_all = [s for f in suite_files for s in load_suites(f)]
     if list_only:
         _print_listing(suites_all)
         return
@@ -114,21 +119,28 @@ def cmd_record(
     suites = _select_or_exit(suites_all, case_patterns, skip_patterns)
 
     any_error = False
+    reports = []
     for s in suites:
         report = runner.record(s)
         terminal.render(report)
-        if json_out:
-            JsonReporter().render(report, json_out)
+        reports.append(report)
         # record mode doesn't fail on grader failures, but a literal exception
         # during execution still warrants a nonzero exit.
         if any(cr.trace.error for cr in report.case_reports):
             any_error = True
+    if json_out:
+        JsonReporter().render_many(reports, json_out)
 
     sys.exit(1 if any_error else 0)
 
 
 @main.command("check")
-@click.argument("suite_file", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument(
+    "suite_files",
+    nargs=-1,
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
 @click.option("--json-out", type=click.Path(path_type=Path), help="Write JSON report to this path.")
 @_CASE_OPTION
 @_SKIP_OPTION
@@ -166,7 +178,7 @@ def cmd_record(
 @click.pass_context
 def cmd_check(
     ctx: click.Context,
-    suite_file: Path,
+    suite_files: tuple[Path, ...],
     json_out: Path | None,
     case_patterns: tuple[str, ...],
     skip_patterns: tuple[str, ...],
@@ -175,12 +187,12 @@ def cmd_check(
     strict_judge: bool,
     runs: int,
 ) -> None:
-    """Run every suite in SUITE_FILE and diff against saved baselines."""
+    """Run every suite in SUITE_FILES and diff against saved baselines."""
     store: BaselineStore = ctx.obj["store"]
     runner = Runner(store, runs=runs)
     terminal = TerminalReporter()
 
-    suites_all = load_suites(suite_file)
+    suites_all = [s for f in suite_files for s in load_suites(f)]
     if list_only:
         _print_listing(suites_all)
         return
@@ -189,15 +201,17 @@ def cmd_check(
 
     any_regression = False
     silent_judge_cases: list[str] = []
+    reports = []
     for s in suites:
         report = runner.check(s)
         terminal.render(report)
-        if json_out:
-            JsonReporter().render(report, json_out)
+        reports.append(report)
         any_regression = any_regression or report.has_regression
         for cr in report.case_reports:
             if any(r.metadata.get("silent_fallback") for r in cr.grader_results):
                 silent_judge_cases.append(f"{cr.suite_name}/{cr.case_name}")
+    if json_out:
+        JsonReporter().render_many(reports, json_out)
 
     if strict_judge and silent_judge_cases:
         click.echo(
