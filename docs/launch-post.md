@@ -1,68 +1,80 @@
-# Show HN: agentprdiff — guard your LLM agents in CI
+# Show HN draft — agentprdiff
 
-*Draft for Hacker News / Reddit r/MachineLearning / X. Post on a Tuesday or Wednesday morning ET.*
+*Post on a Tuesday or Wednesday morning ET. Lead with the finding, not the
+feature list. The linked write-up (docs/benchmark-writeup.md, published on
+agentprdiff.dev) carries the details.*
 
 ---
 
-**Title:** Show HN: Agentguard – snapshot tests that guard LLM agents against regressions in CI
+**Title:** Show HN: We downgraded Claude under two agents — right answers, broken prod (agentprdiff)
 
-Hi HN — I built agentprdiff (https://github.com/vnageshwaran-de/agentprdiff) because every team I've worked with that ships LLM agents has the same quiet failure mode: a model upgrade, a prompt tweak, or a vendor swap silently changes agent behavior in ways nobody notices until a customer complains.
+*(Fallback title if that reads too clickbaity for the day's front page:*
+**Show HN: agentprdiff – snapshot tests that diff LLM agent behavior in CI**)*
 
-The usual answers don't quite fit:
+---
 
-* Unit tests assume determinism. Agents aren't deterministic.
-* Full LLM-as-judge eval pipelines (Langsmith, Braintrust, Humanloop) are powerful but expensive to run per-PR and require you to buy into their platform.
-* Ad-hoc Jupyter notebooks for "let me run a few prompts and eyeball the output" don't live in CI.
+Hi HN — I built agentprdiff (https://github.com/vnageshwaran-de/agentprdiff)
+after watching the same quiet failure hit every team I know that ships LLM
+agents: a model swap, a prompt tweak, or a vendor change silently alters
+agent behavior, and nobody finds out until production.
 
-Agentguard is the narrowest possible tool that solves *only* the CI-regression problem:
+To show the failure mode concretely, I ran a controlled experiment
+[write-up: https://agentprdiff.dev/benchmark-writeup]: two realistic agents
+(a tool-calling support agent with a refund guardrail, and a strict-JSON
+extraction agent), behavioral baselines recorded on claude-sonnet, then the
+natural cost downgrade to claude-haiku.
 
-1. You write cases: `(input, list_of_assertions)`.
-2. You run `agentprdiff record` once on a known-good agent — the trace (LLM calls, tool calls, output, cost, latency) is saved to `.agentprdiff/baselines/<suite>/<case>.json` and checked into git.
-3. On every PR you run `agentprdiff check`. It re-runs each case, re-evaluates each assertion, diffs the new trace against the baseline, and exits 1 if anything regressed.
+The result surprised me. Haiku got *every answer right* — held the refund
+guardrail, refused the ineligible refund, even picked the correct order out
+of an email mentioning two. And it still regressed 3 of 7 cases, because it
+wraps its JSON output in markdown fences despite the prompt explicitly
+forbidding them. Sonnet obeyed; Haiku didn't, consistently, across
+independent runs. If your pipeline calls json.loads on that output, the
+cheaper model takes your service down while scoring fine on every accuracy
+benchmark you'd check.
 
-A few design choices that make it cheap to try:
+That's the category of bug agentprdiff exists for. It's deliberately the
+narrowest possible tool:
 
-* **10 batteries-included graders**, all deterministic except one: `contains`, `regex_match`, `tool_called`, `tool_sequence`, `no_tool_called`, `output_length_lt`, `latency_lt_ms`, `cost_lt_usd`, plus `semantic()` for LLM-as-judge with a pluggable `Judge` callable. If you set `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, the semantic grader calls that provider. If neither is set, it falls back to a deterministic `fake_judge` that keyword-matches — so CI stays green and free.
-* **JSON baselines checked into git.** Reviewers see trace changes inline in pull requests. The audit trail for "how the agent's behavior changed" becomes a normal code review artifact.
-* **Zero framework lock-in.** Your agent is any callable. Wrap it in `agentprdiff.suite(...)` and you're done. No inheritance, no subclasses, no decorators, no monkey-patching.
-* **One happy path.** There is exactly one way to define a suite, one way to record, one way to check. The public API is ~10 names.
+1. Write cases: (input, list of assertions) — assertions are deterministic
+   graders (contains, regex, tool_called, tool_sequence, latency/cost
+   budgets) plus an optional LLM-judge one you can refuse to depend on.
+2. `agentprdiff record` on a known-good agent — full traces (LLM calls,
+   tool calls, output, cost, latency) saved as JSON baselines, committed
+   to git.
+3. `agentprdiff check` on every PR — re-runs, diffs against baseline,
+   exits 1 on regression. A GitHub Action posts the behavioral diff as a
+   PR comment, so reviewers see "this assertion flipped, here's the output
+   diff" the way they see code diffs.
 
-### The 10-line hello world
+Design choices that came from running this on real suites:
 
-```python
-from agentprdiff import case, suite
-from agentprdiff.graders import contains, tool_called, latency_lt_ms, semantic
-from my_agent import run
+* Stochasticity is handled honestly: `--runs 3` with a per-case
+  min_pass_rate tolerates a wobble without letting real regressions
+  through; `--concurrency` keeps that affordable in wall-clock.
+* Baselines are frozen: grader verdicts are persisted at record time, so
+  checks never re-run judges against your baseline.
+* Trust over green: `--strict-judge` fails CI if the semantic grader
+  silently fell back to the keyword-matching fake judge because an API key
+  went missing. A green build should mean what it says.
+* No framework lock-in: your agent is any callable (sync or async);
+  adapters auto-instrument the OpenAI/Anthropic SDKs and OpenAI-compatible
+  providers.
 
-s = suite(name="billing", agent=run, cases=[
-    case(name="refund", input="I want a refund for #1234",
-         expect=[contains("refund"), tool_called("lookup_order"),
-                 semantic("agent confirms refund"), latency_lt_ms(10_000)]),
-])
-```
+The benchmark is in the repo and re-runnable for a few cents
+(benchmark/README.md has the methodology, including the false positive we
+hit and how we fixed it — that part cuts against us and stays in).
 
-```
-$ agentprdiff record suite.py
-$ agentprdiff check  suite.py   # exit 1 on regression
-```
+MIT licensed. `pip install agentprdiff`. Docs: https://agentprdiff.dev
 
-### What's it like to use?
+I'd genuinely value HN's take on one open question: strict-judge mode
+becomes the default at 1.0 — is failing CI on a silently-degraded judge the
+right default, or too aggressive?
 
-The readme has a 60-second quickstart that runs in your terminal without any API keys (it uses a mock agent). Break the mock agent and watch agentprdiff point at the specific grader that flipped, the cost delta, the tool sequence that changed, and a unified diff of the output.
+---
 
-### Comparisons
-
-* **DeepEval / Promptfoo:** great at evaluation; more framework than agentprdiff. If you want to run 10k cases and track an ELO, use them. If you just want `exit 1` in CI when today's PR breaks yesterday's behavior, agentprdiff is 50 lines of setup.
-* **Langfuse / LangSmith:** great at observability on production traffic. Agentguard is the offline, pre-production, deterministic counterpart.
-* **Jest snapshot tests / pytest-regressions:** closest analogue. Agentguard is those — but for agent traces specifically, with cost/latency/tool-sequence first-class.
-
-### Status
-
-0.1.0 — alpha. Core API is stable. Drop-in SDK wrappers for OpenAI / Anthropic / Vercel AI SDK are on the 0.2 roadmap. MIT license, Python 3.10+.
-
-Would love feedback — especially from teams that have built their own in-house equivalent. The design decisions I've made (baselines-in-git, deterministic-first graders, semantic as one of ten rather than the only grader) are all load-bearing and I'm keen to hear where they break down.
-
-Repo: https://github.com/vnageshwaran-de/agentprdiff
-PyPI: `pip install agentprdiff`
-
-— Vinoth
+*Cross-post plan: r/LLMDevs (same body, less formal), LinkedIn (the
+write-up's "why this matters" section), lobste.rs if someone can invite.
+Pitch the write-up itself to TLDR AI / Latent Space / Python Weekly with a
+two-line summary: model-swap regression data is scarce; this is
+re-runnable.*
