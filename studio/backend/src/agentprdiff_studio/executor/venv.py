@@ -52,7 +52,7 @@ def is_provisioned(workspace: Path) -> bool:
 
 
 def _engine_req() -> str:
-    return os.environ.get("STUDIO_ENGINE_REQ") or "agentprdiff>=0.2.5"
+    return os.environ.get("STUDIO_ENGINE_REQ") or "agentprdiff>=0.5.0"
 
 
 def _read_or_empty(p: Path) -> bytes:
