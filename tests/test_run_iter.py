@@ -39,7 +39,7 @@ class TestRunIter:
 
         first = next(gen)
         # Only the first case's agent invocation has happened at this point —
-        # the streaming contract integrators (Studio) rely on.
+        # the streaming contract integrators rely on.
         assert calls["n"] == 1
         assert first.case_name == "c0"
 

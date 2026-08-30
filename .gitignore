@@ -34,4 +34,3 @@ env/
 
 # Engine worktree nested inside Studio. Not committed — engine source
 # already lives at the repo root.
-studio/.claude/

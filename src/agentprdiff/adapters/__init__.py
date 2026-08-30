@@ -44,7 +44,7 @@ from .pricing import (
 # to clear.
 #
 # Module-level + process-wide on purpose — this is a knob for tooling
-# (Studio's multi-model benchmark, or anyone doing batch comparisons
+# (the benchmark driver, or anyone doing batch comparisons
 # from a notebook), not for production agent code. Production agents
 # should keep passing ``model=`` explicitly.
 #

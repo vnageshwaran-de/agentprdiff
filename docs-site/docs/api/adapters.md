@@ -233,5 +233,5 @@ set_default_model(None)            # clear the override
 A module-level model override, read at call time by both adapters'
 patched `create()`: when set, it rewrites the `model` kwarg on every
 instrumented LLM call. This is how tooling (e.g. the benchmark driver or
-Studio's multi-model runs) points one suite at multiple models without
+batch multi-model runs) points one suite at multiple models without
 agent code taking a `model` parameter. Shipped 0.3.0.

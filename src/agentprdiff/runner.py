@@ -178,7 +178,7 @@ class Runner:
     def run_iter(self, suite: Suite, *, mode: str) -> Iterator[CaseReport]:
         """Stream one finished :class:`CaseReport` per case, in suite order.
 
-        The public streaming API for integrators (Studio, dashboards,
+        The public streaming API for integrators (dashboards, web UIs,
         progress UIs) that want per-case results as they complete instead
         of waiting for the whole :class:`RunReport`. Semantics are
         identical to :meth:`record` / :meth:`check` — multi-run attempts,

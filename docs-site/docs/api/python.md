@@ -207,7 +207,7 @@ class Runner:
     def run_iter(self, suite: Suite, *, mode: str) -> Iterator[CaseReport]: ...
 ```
 
-`run_iter` is the streaming form for integrators (dashboards, Studio):
+`run_iter` is the streaming form for integrators (dashboards, web UIs):
 it yields one finished `CaseReport` per case, in suite order, as each
 completes — with semantics identical to `record`/`check` (multi-run,
 `min_pass_rate`, frozen baseline verdicts, concurrency). `record` and

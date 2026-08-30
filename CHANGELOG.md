@@ -15,15 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for integrators (Studio, dashboards, progress UIs) that previously had
   to copy the runner loop. Semantics are identical to `record`/`check`;
   those are now thin wrappers over it.
-- Studio: the runner shim now delegates to the engine's `run_iter`
-  instead of maintaining a hand copy of the run loop, so Studio runs are
-  byte-identical to CLI runs — frozen baseline verdicts are persisted at
-  record time, checks read them back (no judge re-runs against
-  baselines), and `min_pass_rate` semantics apply. The shim accepts
-  `--runs` / `--concurrency`, streams `runs_total` / `runs_passed` /
-  `min_pass_rate` and a per-case `silent_judge_fallback` flag in its
-  `case_finished` events, and falls back to the legacy loop on engines
-  older than `run_iter`. Studio's engine pin is now `agentprdiff>=0.5.0`.
+### Removed
+
+- Studio (the experimental web UI under `studio/`) has been removed from
+  this repository to keep the project focused on the engine, CLI, and
+  GitHub Action for the 0.x series. It will return as its own release
+  when it's ready; the full implementation — including the `run_iter`
+  shim integration — is preserved in git history (branch
+  `studio-archive`).
 - Reproducible model-swap benchmark (`benchmark/`): two realistic agents
   (a tool-calling customer-support agent with a refund-eligibility
   guardrail, and a strict-JSON extraction agent) with deterministic
