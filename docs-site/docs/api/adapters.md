@@ -145,7 +145,7 @@ What the adapter records per `messages.create`:
   (`usage.output_tokens`), `cost_usd` (price-table lookup), `latency_ms`.
 - `output_text` — the concatenation of every `text` block in
   `resp.content`.
-- `tool_calls` — one summary entry per `tool_use` block (id, name, input).
+- `tool_calls` — one summary entry per `tool_use` block: `{"id": ..., "name": ..., "arguments": ...}` (the key is `arguments`, normalized to match the OpenAI adapter).
 
 ## Pricing
 
@@ -173,7 +173,8 @@ register_prices({"acme-llama-3-fine": (0.0003, 0.0006)})
 ### `estimate_cost_usd(model, *, prompt_tokens, completion_tokens, prices=None)`
 
 Compute USD cost for a single call. Returns `0.0` and emits one
-`RuntimeWarning` per process for unknown models.
+`RuntimeWarning` per process *per unknown model name* — a second
+distinct unknown model warns again.
 
 ```python
 estimate_cost_usd("gpt-4o-mini", prompt_tokens=120, completion_tokens=50)
@@ -219,3 +220,18 @@ Per-call `prices` takes precedence over `register_prices` and
 - Async Anthropic.
 
 Roadmap: see [Roadmap](../roadmap.md).
+
+## `set_default_model(model)` / `get_default_model()`
+
+```python
+from agentprdiff.adapters import set_default_model, get_default_model
+
+set_default_model("gpt-4o-mini")   # every adapter-patched create() now uses it
+set_default_model(None)            # clear the override
+```
+
+A module-level model override, read at call time by both adapters'
+patched `create()`: when set, it rewrites the `model` kwarg on every
+instrumented LLM call. This is how tooling (e.g. the benchmark driver or
+Studio's multi-model runs) points one suite at multiple models without
+agent code taking a `model` parameter. Shipped 0.3.0.

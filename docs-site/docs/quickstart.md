@@ -122,7 +122,7 @@ reviewers see behavior changes in the diff alongside code changes.
 
 ### Why this works
 
-`AGENTS.md` is roughly 700 lines of dense, grep-friendly instructions
+`AGENTS.md` is roughly 1,000 lines of dense, grep-friendly instructions
 written *for* AI assistants — what to look for in the codebase, what
 files to produce, what shape they should have, what mistakes to avoid.
 Pinning it at the start of the session is what stops the assistant from
@@ -245,7 +245,7 @@ Output:
 ```
 agentprdiff record — suite billing  (1/1 passed, 0 regressed)
 ┏━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━┓
-┃ Case               ┃ Result ┃ Cost Δ ┃ Latency ┃ Notes ┃
+┃ Case               ┃ Result ┃ Cost Δ ┃ Latency Δ ┃ Notes ┃
 ┡━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━┩
 │ refund_happy_path  │ PASS   │        │         │  —    │
 └────────────────────┴────────┴────────┴─────────┴───────┘
@@ -279,7 +279,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install -e ".[dev]"
+      - run: pip install -r requirements.txt agentprdiff
       - run: agentprdiff check suites/*.py --json-out artifacts/agentprdiff.json
       - uses: actions/upload-artifact@v4
         if: always()

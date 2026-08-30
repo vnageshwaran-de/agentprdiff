@@ -12,7 +12,7 @@ When `agentprdiff check` exits 1 and you need to figure out why, *fast*.
 
 ```mermaid
 flowchart TD
-    A[CI fails] --> B[agentprdiff check --list]
+    A[CI fails] --> B[agentprdiff check suites/*.py --list]
     B --> C[Identify the failing case]
     C --> D[agentprdiff review &lt;suite&gt; --case &lt;case&gt;]
     D --> E{Is the diff what you expected?}
@@ -29,11 +29,12 @@ The CI log shows which cases regressed and the headline reason for each:
 ```
 agentprdiff check — suite billing  (3/4 passed, 1 regressed)
 ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Case                          ┃ Result     ┃ Cost Δ ┃ Latency ┃ Notes                                  ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ refund_happy_path             │ REGRESSION │  +$.02 │ +180 ms │ tools: ['lookup_order'] → []           │
-│                               │            │        │         │ output changed                         │
-│                               │            │        │         │ tool_called('lookup_order') 0/1        │
+┃ Case                          ┃ Result     ┃ Cost Δ ┃ Latency Δ ┃ Notes                                  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ refund_happy_path             │ REGRESSION │  +$.02 │ +180 ms   │ tools: ['lookup_order'] → []           │
+│                               │            │        │           │ tool_called('lookup_order',            │
+│                               │            │        │           │ min_times=1) tool 'lookup_order'       │
+│                               │            │        │           │ called 0 time(s), required >= 1        │
 └───────────────────────────────┴────────────┴────────┴─────────┴────────────────────────────────────────┘
 ```
 

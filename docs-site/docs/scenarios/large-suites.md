@@ -42,7 +42,9 @@ my_app/
 └── .github/workflows/agentprdiff.yml
 ```
 
-`agentprdiff scaffold` creates exactly this layout for a new suite name:
+`agentprdiff scaffold` creates the `suites/` files and the workflow YAML
+for a new suite name (the agent code is yours already, and
+`.agentprdiff/baselines/` appears on the first `record`):
 
 ```bash
 agentprdiff scaffold refund --recipe sync-openai
@@ -152,9 +154,11 @@ agentprdiff check — suite multilingual  (9/9 passed, 0 regressed)
 
 ## Tips for very large suites
 
-- **Tag slow cases.** `case(name="...", tags=["slow"])`. Then
-  `agentprdiff check --skip slow` for the fast PR gate, and a separate
-  nightly job for the full set.
+- **Name slow cases so they're filterable.** `--case`/`--skip` match
+  *case names* (tags aren't consulted by the filter yet — tag-based
+  filtering is on the roadmap). A `_slow` suffix in the name gives you
+  `agentprdiff check suites/*.py --skip slow` for the fast PR gate, and
+  a separate nightly job runs the full set.
 - **Use `--case` filtering in PR descriptions** so a maintainer can
   reproduce a specific failure with one copy/paste.
 - **Split by latency budget.** Cases that legitimately need 30s of

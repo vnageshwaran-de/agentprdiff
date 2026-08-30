@@ -62,7 +62,7 @@ agentprdiff check — suite billing  (2/2 passed, 0 regressed)
 ┃ Case                   ┃Result┃ Cost Δ   ┃ Latency Δ  ┃ Notes            ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━┩
 │ cheap_path_lookup      │ PASS │ -$0.0021 │ -180 ms    │  —               │
-│ expensive_path_summary │ PASS │  $0.0000 │  +12 ms    │  —               │
+│ expensive_path_summary │ PASS │          │  +12 ms    │  —               │
 └────────────────────────┴──────┴──────────┴────────────┴──────────────────┘
 ✓ no regressions.
 ```
@@ -98,8 +98,8 @@ trace, or when the trace's `total_latency_ms` is `0.0`).
 ## Catching cost regressions explicitly
 
 When a case has *no* `cost_lt_usd` grader, a cost increase shows up in
-the report's Notes column but doesn't fail CI. Add the grader to gate it
-hard:
+the report's dedicated **Cost Δ** column but doesn't fail CI. Add the
+grader to gate it hard:
 
 ```python
 case(
@@ -143,7 +143,11 @@ agentprdiff.adapters.register_prices({...}) to fix.
 ```
 
 Every case will trivially pass `cost_lt_usd(...)` until you teach the
-table about the model. See [Configuration → Pricing tables](../usage/configuration.md#pricing-tables).
+table about the model — though not silently: since 0.5.0 the grader
+flags the suspicious pass in its reason ("N LLM call(s) recorded
+$0.0000 — pricing may be missing") and sets
+`metadata["zero_cost_with_llm_calls"]`. See
+[Configuration → Pricing tables](../usage/configuration.md#pricing-tables).
 
 ## Latency on async agents
 

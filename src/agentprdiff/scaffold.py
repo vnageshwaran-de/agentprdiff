@@ -179,9 +179,10 @@ The ``with`` block is a regular ``with`` (not ``async with``) — the patch is
 bound to the client *instance*, not the running event loop, so context
 management is event-loop-agnostic.
 
-agentprdiff's runner is sync, so the public ``eval_agent`` bridges with
-``asyncio.run``. If your tests already manage their own loop, replace that
-bridge — the inner async function is what matters.
+Since agentprdiff 0.5.0 the runner resolves ``async def`` agents natively,
+so the inner async function can be passed straight to ``suite(agent=...)``.
+The generated ``eval_agent`` keeps an ``asyncio.run`` bridge so the scaffold
+also works on older agentprdiff pins; delete it if you're on >= 0.5.0.
 """
 
 from __future__ import annotations

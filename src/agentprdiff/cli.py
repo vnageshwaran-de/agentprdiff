@@ -1,12 +1,13 @@
 """Command-line interface for agentprdiff.
 
-Five subcommands:
+Six subcommands:
 
-* `agentprdiff init`    — scaffold a .agentprdiff/ directory
-* `agentprdiff record`  — record baselines for every suite in a file
-* `agentprdiff check`   — compare against baselines; exit 1 on regression
-* `agentprdiff review`  — verbose per-case diff for local iteration; exit 0
-* `agentprdiff diff`    — show the saved baseline trace for one case
+* `agentprdiff init`     — scaffold a .agentprdiff/ directory
+* `agentprdiff record`   — record baselines for every suite in the given files
+* `agentprdiff check`    — compare against baselines; exit 1 on regression
+* `agentprdiff review`   — verbose per-case diff for local iteration; exit 0
+* `agentprdiff scaffold` — stamp out the canonical suite layout
+* `agentprdiff diff`     — show the saved baseline trace for one case
 
 `record`, `check`, and `review` accept ``--case`` / ``--skip`` filters and a
 ``--list`` flag for case discovery; see :mod:`agentprdiff.filtering` for
@@ -290,8 +291,9 @@ def cmd_review(
     help=(
         "Eval-wrapper template to generate. "
         "`sync-openai` uses instrument_client with a sync OpenAI client; "
-        "`async-openai` does the same with AsyncOpenAI plus an asyncio.run "
-        "bridge; `stubbed` substitutes a single LLM helper "
+        "`async-openai` does the same with AsyncOpenAI (the runner resolves "
+        "async agents natively since 0.5.0; the template keeps a sync "
+        "wrapper for older pins); `stubbed` substitutes a single LLM helper "
         "(see docs/adapters.md)."
     ),
 )
@@ -307,7 +309,8 @@ def cmd_scaffold(name: str, recipe: str, root_dir: Path) -> None:
     """Stamp out the canonical suite layout for NAME.
 
     Produces ``suites/__init__.py``, ``_eval_agent.py``, ``_stubs.py``,
-    ``<NAME>.py``, ``suites/README.md``, and ``.github/workflows/agentprdiff.yml``.
+    ``<NAME>.py``, ``<NAME>_cases.md``, ``suites/README.md``, and
+    ``.github/workflows/agentprdiff.yml``.
     Existing files are never overwritten — they are reported as `[skip]`.
     """
     try:

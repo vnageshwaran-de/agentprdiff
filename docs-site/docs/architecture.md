@@ -6,8 +6,9 @@ sidebar_position: 6
 
 # Architecture Deep Dive
 
-`agentprdiff` is intentionally small — about 1,500 lines of Python in
-`src/agentprdiff/`. This page is a guided tour of the modules, the
+`agentprdiff` is intentionally small — about 4,500 lines of Python in
+`src/agentprdiff/`, half of which is the scaffold templates, reporters,
+and adapters. This page is a guided tour of the modules, the
 execution flow, and the design tradeoffs.
 
 ## Module map
@@ -24,12 +25,15 @@ src/agentprdiff/
 ├── reporters.py        # TerminalReporter, JsonReporter, ReviewReporter
 ├── scaffold.py         # `agentprdiff scaffold` templates
 ├── cli.py              # Click app — wires the above into commands
+├── trace_store.py      # TraceStore ABC + InMemoryTraceStore (pluggable backends)
+├── masking.py          # MaskRule, mask_trace — field-level PII redaction
 ├── graders/
 │   ├── __init__.py     # Public grader exports
 │   ├── deterministic.py# contains, regex_match, tool_called, ...
-│   └── semantic.py     # semantic(), fake_judge, openai_judge, anthropic_judge
+│   ├── semantic.py     # semantic(), fake_judge, openai_judge, anthropic_judge
+│   └── http_judge.py   # http_judge — custom LLM-as-judge endpoints
 └── adapters/
-    ├── __init__.py     # Pricing re-exports
+    ├── __init__.py     # Pricing re-exports + set_default_model/get_default_model
     ├── pricing.py      # DEFAULT_PRICES, register_prices, estimate_cost_usd
     ├── openai.py       # OpenAI / OpenAI-compatible (sync + async)
     └── anthropic.py    # Anthropic Messages API (sync only today)
@@ -86,17 +90,23 @@ flowchart TB
 4. **Per-suite loop.** For each surviving `Suite`:
    1. `Runner.check` calls `BaselineStore.ensure_initialized` and
       `BaselineStore.fresh_run_id`.
-   2. For each `Case`:
+   2. Every case is executed — up to `--runs N` attempts each, and with
+      `--concurrency N` up to that many cases at once on a thread pool
+      (report order still follows suite order). Per case:
       1. `core.run_agent` invokes the agent, building a `Trace` (or
-         capturing the agent-returned trace, or capturing an exception).
-      2. `case.expect` graders are evaluated against the new trace; each
-         returns a `GradeResult`.
+         capturing the agent-returned trace, resolving a returned
+         coroutine, or capturing an exception).
+      2. `case.expect` graders are evaluated against each attempt; the
+         representative attempt (last fully-passing, else last) carries
+         forward, and its grader verdicts are persisted into
+         `trace.metadata["grader_results"]`.
       3. `BaselineStore.save_run_trace(run_id, trace)` writes the new
          trace to `runs/<run_id>/<suite>/<case>.json`.
       4. `BaselineStore.load_baseline(suite, case)` loads the committed
          baseline if it exists.
-      5. *If a baseline exists*, the same graders are replayed against it
-         to get baseline-pass states.
+      5. *If a baseline exists*, its persisted grader verdicts are read
+         back (`metadata["grader_results"]`); only legacy baselines
+         recorded before 0.5.0 fall back to replaying the graders.
       6. `differ.diff_traces` computes a `TraceDelta` from baseline +
          current + grader results.
       7. A `CaseReport` is appended to the suite's `RunReport`.
@@ -194,22 +204,26 @@ demanding API keys for the first commit is a fast way to get the suite
 turned off. The reporter prints a yellow banner reminding you the silent
 fallback is in effect, so it can never quietly bit-rot.
 
-### Graders are evaluated against both traces
+### Baseline grader verdicts are frozen at record time
 
-To compute *which* assertion regressed, the runner re-runs the case's
-graders against the loaded baseline. This is a tradeoff: baseline JSON
-doesn't store grader results, only the trace, so the grader has to be
-the same callable across both runs (which it is, because both runs use
-the same `case.expect` list). The alternative (storing grader results in
-the baseline) was rejected because it would force a migration on every
-grader change.
+Since 0.5.0, `record` persists each grader's verdict into the baseline
+(`trace.metadata["grader_results"]`), and `check` reads those stored
+verdicts to compute which assertion regressed. This is what makes a
+baseline truly a *frozen known-good*: for `semantic()` graders it
+removes a paid, nondeterministic judge call against the baseline on
+every check. Legacy baselines (recorded before 0.5.0, or with a
+malformed payload) fall back to the old behavior of replaying the
+graders against the stored trace — so old baselines keep working, and
+re-recording migrates them.
 
 ## Key invariants
 
 - A `Trace` is JSON-serializable. Every field round-trips through
   `model_dump_json` / `model_validate_json`.
-- A `GradeResult.grader_name` uniquely identifies the assertion within a
-  case. Reporters and the differ key off it.
+- A `GradeResult`'s stable key — `grader_id` when set (the `id=`
+  argument on grader factories), else `grader_name` — uniquely
+  identifies the assertion within a case. Reporters and the differ key
+  off it.
 - `BaselineStore.save_baseline` overwrites in place. The differ never
   *appends* to baseline JSON.
 - `BaselineStore.fresh_run_id` returns ISO-8601 with second precision —
@@ -222,12 +236,13 @@ grader change.
 
 - **No streaming reporter.** The whole `RunReport` is built before
   rendering. Long suites print nothing until they finish.
-- **Baselines are not versioned.** A baseline from `agentprdiff 0.1`
-  with a different schema would fail to load in 0.2. We bump the minor
-  version to signal that and update `Trace` defensively. PRs across
-  major bumps need re-recorded baselines.
-- **No remote store.** `BaselineStore` is filesystem-only. Subclass it if
-  you need S3 / GCS / database — see
+- **Baselines are not versioned.** `Trace` is `extra="allow"` and loads
+  defensively, and pre-0.5.0 baselines still work via the
+  grader-replay fallback — but a future breaking schema change would
+  need re-recorded baselines, signaled by a version bump.
+- **The bundled store is filesystem-only.** For S3 / GCS / a database,
+  implement the `TraceStore` ABC (`agentprdiff.trace_store`) — `Runner`
+  accepts any `TraceStore` — or subclass `BaselineStore`; see
   [Customization](./usage/customization.md#plugging-a-custom-store-backend).
 - **No scheduled re-records.** Drift over time (model providers
   silently nudging behavior) is not auto-detected.

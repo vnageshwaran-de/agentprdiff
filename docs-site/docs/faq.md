@@ -63,7 +63,8 @@ review surface.
 
 ## Can I store baselines somewhere other than the repo?
 
-Yes — subclass `BaselineStore` and back it with S3, GCS, or a database.
+Yes — implement the `TraceStore` ABC (`agentprdiff.trace_store`), which
+`Runner` accepts directly; subclassing `BaselineStore` also still works.
 See [Customization → Plugging a custom store backend](./usage/customization.md#plugging-a-custom-store-backend).
 The CLI cannot use a custom store directly; wrap your runner in your own
 entry point.
@@ -189,8 +190,8 @@ to ASCII alphanumerics, dashes, underscores, and dots.
 
 ## Is there a JS/TS port?
 
-Not yet. A JS companion package for the Vercel AI SDK is on the 0.3
-roadmap. In the meantime, the JSON baseline format is documented enough
+Not yet. A JS companion package for the Vercel AI SDK is on the
+[roadmap](./roadmap.md). In the meantime, the JSON baseline format is documented enough
 to implement a comparator in any language — open an issue if you start
 working on one.
 

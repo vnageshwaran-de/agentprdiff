@@ -48,9 +48,12 @@ agentprdiff check — suite demo  (0/1 passed, 1 regressed)
 - `CaseReport.passed` is `False` when `trace.error is not None`, even if
   every grader you defined would otherwise have passed (most graders
   silently fail on the empty trace).
-- A baseline that *also* errored on the same case → not a regression. A
-  clean baseline that now errors → regression. ("First-run-bad is bad",
-  but "second-run-bad-when-first-was-also-bad" is just consistent.)
+- An erroring case is reported as REGRESSION on every run — a
+  case only *passes* when all graders pass **and** the trace has no
+  error, and a non-passing case is always flagged. (The trace delta
+  additionally distinguishes "newly erroring" from "baseline also
+  errored" via `baseline_error`, but the case-level verdict doesn't
+  soften for a consistently-broken case: broken is broken.)
 
 ## 3b. Empty output
 
@@ -75,7 +78,7 @@ case(
 ### Expected output
 
 ```
-parser_blowup  REGRESSION  regex_match('\S') no match for '\S'
+empty_response  REGRESSION  regex_match('\\S') no match for '\\S'
 ```
 
 ### Explanation
@@ -108,8 +111,8 @@ agentprdiff check — suite customer_support  (0/1 passed, 1 regressed)
 
 ### Explanation
 
-The runner returns `delta=None` (or, more precisely, `delta` with
-`baseline_exists=False`) for cases without baselines. `CaseReport`
+The runner returns a `delta` with `baseline_exists=False` for cases
+without baselines (in `check` mode the delta is always computed). `CaseReport`
 fast-paths: if the current run fails, it counts as a regression. If the
 current run *passes*, it isn't — you'd see `PASS` and a missing-baseline
 hint in the JSON output.
@@ -230,9 +233,13 @@ case(name="legacy", input="…", expect=[contains("ok"), latency_lt_ms(5_000)])
 The runner detects the missing trace and synthesizes one with empty
 `llm_calls` / `tool_calls` and a wall-clock `total_latency_ms`.
 `contains` works (it stringifies the output). `latency_lt_ms` works
-(latency is wall-clock). `tool_called`, `cost_lt_usd`, etc. *don't* —
-you'll see them fail with reasons like `tool 'lookup_order' called 0
-time(s), required >= 1`.
+(latency is wall-clock). Tool graders *don't* — `tool_called` fails
+loudly with reasons like `tool 'lookup_order' called 0 time(s), required
+>= 1`. Watch out for `cost_lt_usd`, which fails in the *quiet*
+direction: an un-instrumented trace records `$0.00` total cost, so the
+budget trivially passes (with no LLM calls recorded, even the zero-cost
+warning stays silent). A passing cost budget means nothing until the
+agent is instrumented.
 
 That's the gradient: start with `contains` and `latency_lt_ms`, instrument
 incrementally to unlock `tool_called` / `cost_lt_usd`, then layer in

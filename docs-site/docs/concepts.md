@@ -24,6 +24,7 @@ classDiagram
         +Any input
         +list~Grader~ expect
         +list~str~ tags
+        +float min_pass_rate
     }
     class Trace {
         +str suite_name
@@ -43,7 +44,9 @@ classDiagram
     class GradeResult {
         +bool passed
         +str grader_name
+        +Optional~str~ grader_id
         +str reason
+        +dict metadata
     }
     Suite "1" --> "*" Case
     Case "*" --> "*" Grader : expect
@@ -65,7 +68,9 @@ async pipelines don't need a sync wrapper.
 ### Case
 
 One input, plus the assertions that must hold for the resulting trace.
-Built with `case(name=, input=, expect=, tags=)`.
+Built with `case(name=, input=, expect=, tags=, min_pass_rate=)` —
+`min_pass_rate` (default `1.0`) only matters with `check --runs N`: the
+case passes when at least that fraction of attempts fully pass.
 
 ### Trace
 
@@ -87,9 +92,13 @@ you can add your own by writing a function. See
 
 ### GradeResult
 
-`{passed: bool, grader_name: str, reason: str}`. The reason is what shows
-up in the terminal table when an assertion fails — write reasons that are
-useful to a future on-call engineer.
+`{passed: bool, grader_name: str, grader_id: str | None, reason: str,
+metadata: dict}`. The reason is what shows up in the terminal table when
+an assertion fails — write reasons that are useful to a future on-call
+engineer. `grader_id` (set via the `id=` argument on grader factories) is
+the stable identity diffs match on, so renamed arguments don't read as
+removed + added assertions; `metadata` carries flags like
+`silent_fallback`, which `check --strict-judge` reads.
 
 ## How a run flows internally
 
@@ -156,14 +165,16 @@ A case is flagged as a regression when **any** of the following are true:
 
 | Cause | Detected by |
 |---|---|
-| A grader that previously passed now fails | `AssertionChange.is_regression` |
+| A grader that previously passed — or is newly added and absent from the baseline — now fails | `AssertionChange.is_regression` |
 | The agent raised in the current run, but not in baseline | `TraceDelta.has_regression` |
 | There is no baseline yet, *and* any current grader failed | `CaseReport.has_regression` (first-run-bad is still bad) |
 
 `CaseReport.has_regression` is the per-case answer.
 `RunReport.has_regression` is `any(c.has_regression for c in cases)`.
 The CLI maps this to a process exit code: `1` for any regression, `0`
-otherwise. `agentprdiff review` always exits `0` regardless — it's a
+otherwise — unless `--no-fail-on` was passed (regressions reported, exit
+`0`) or `--strict-judge` tripped (exit `1` even with no regressions).
+`agentprdiff review` always exits `0` regardless — it's a
 local-iteration tool, not a CI gate.
 
 ## Cost / latency / tokens are diffed too

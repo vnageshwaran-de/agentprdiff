@@ -30,8 +30,12 @@ agentprdiff --version
 
 ```bash
 $ agentprdiff check suite.py
-FileNotFoundError: no such file: /abs/path/suite.py
+Error: Invalid value for 'SUITE_FILES...': File 'suite.py' does not exist.
 ```
+
+(Exit code 2 — Click validates the path before agentprdiff runs. The
+`FileNotFoundError: no such file: ...` form appears only when calling
+`load_suites` as a library.)
 
 - Path is relative to the current working directory, not to
   `.agentprdiff/`. `cd` into the suite's parent or pass the absolute path.
@@ -195,7 +199,7 @@ def my_agent(query):
 The simplest long-term fix: delete the wrapper and hand the async
 function straight to `suite(agent=...)`.
 
-## "test_runner.py::test_record_overwrites_baselines fails"
+## "a test in tests/test_runner.py or tests/test_store.py fails"
 
 You're hacking on agentprdiff itself and a baseline-test broke. The most
 common cause: a stray `.agentprdiff/` directory left over from a previous

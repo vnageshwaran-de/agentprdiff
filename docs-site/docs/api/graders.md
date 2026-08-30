@@ -166,6 +166,12 @@ semantic("…", judge=openai_judge(model="gpt-4o-mini"))
 
 # Anthropic Messages API (default model claude-haiku-4-5-20251001).
 semantic("…", judge=anthropic_judge(model="claude-haiku-4-5-20251001"))
+
+# Any OpenAI-compatible HTTP endpoint (self-hosted or third-party judge
+# service). Reads HTTP_JUDGE_API_KEY when api_key isn't passed.
+from agentprdiff.graders.http_judge import http_judge
+semantic("…", judge=http_judge("https://judge.internal/v1/chat/completions",
+                               model="my-judge-model"))
 ```
 
 #### Custom judges

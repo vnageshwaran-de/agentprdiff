@@ -29,6 +29,12 @@ def first_tool_was(name: str):
     return _grader
 ```
 
+Convention worth copying from the built-ins: accept an optional
+`id: str | None = None` parameter and pass it through as
+`GradeResult(grader_id=id, ...)` — diffs match assertions by that stable
+id when present, so renaming your grader's arguments doesn't read as a
+removed + added assertion.
+
 Use it like any built-in grader:
 
 ```python
@@ -190,7 +196,7 @@ that round-trip cleanly to JSON.
 ```python
 trace.metadata["model_temperature"] = 0.2
 trace.metadata["request_id"] = "abc-123"
-trace.extra["my_internal_thing"] = {"foo": [1, 2, 3]}  # also persisted
+trace.my_internal_thing = {"foo": [1, 2, 3]}   # extra attribute; also persisted
 ```
 
 Custom graders can read either. Anything the differ doesn't natively

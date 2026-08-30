@@ -214,14 +214,15 @@ is fully self-contained — no API keys required.
 
 ## Environment variables
 
-`agentprdiff` itself reads only one env var. Your *agent* and the
-*semantic judge* read a few others.
+`agentprdiff` itself reads a small set of env vars — the judge selector
+and, to pick a default judge and detect the silent fallback, the two
+provider keys. Your *agent* reads whatever it always read.
 
 | Variable | Read by | Purpose |
 |---|---|---|
-| `AGENTPRDIFF_JUDGE` | `agentprdiff` (semantic grader) | `fake`, `openai`, or `anthropic`. Forces the default judge backend, ignoring autodetection. |
-| `OPENAI_API_KEY` | `openai_judge` (when selected); your agent | Real-LLM judge calls and any agent that uses the OpenAI SDK. |
-| `ANTHROPIC_API_KEY` | `anthropic_judge` (when selected); your agent | Real-LLM judge calls and any agent that uses the Anthropic SDK. |
+| `AGENTPRDIFF_JUDGE` | `agentprdiff` (semantic grader) | `fake`, `openai`, or `anthropic`. Forces the default judge backend, ignoring autodetection. The legacy name `AGENTGUARD_JUDGE` still works with a `DeprecationWarning` (removed in v1.0); when both are set, the new name wins. |
+| `OPENAI_API_KEY` | `agentprdiff` (judge autodetection + `--strict-judge`); `openai_judge`; your agent | Presence selects the default judge when no judge var is set; also used for real judge calls and by OpenAI-SDK agents. |
+| `ANTHROPIC_API_KEY` | `agentprdiff` (judge autodetection + `--strict-judge`); `anthropic_judge`; your agent | Presence selects the default judge when no judge var is set; also used for real judge calls and by Anthropic-SDK agents. |
 | Whatever your agent reads | your agent | `agentprdiff` does not touch your agent's keys; it just invokes the callable. |
 
 ### Default judge selection rules
@@ -229,10 +230,14 @@ is fully self-contained — no API keys required.
 When `semantic(...)` runs without an explicit `judge=` argument, the backend
 is chosen in this order:
 
-1. `AGENTPRDIFF_JUDGE=fake` → `fake_judge`
-2. `AGENTPRDIFF_JUDGE=openai` *or* `OPENAI_API_KEY` set → `openai_judge()`
-3. `AGENTPRDIFF_JUDGE=anthropic` *or* `ANTHROPIC_API_KEY` set → `anthropic_judge()`
-4. Otherwise → `fake_judge` (deterministic, free, used in CI without keys)
+1. An explicit `AGENTPRDIFF_JUDGE` value wins outright: `fake` →
+   `fake_judge`, `openai` → `openai_judge()`, `anthropic` →
+   `anthropic_judge()`. (Any other value falls through to `fake_judge` —
+   set one of the three recognized values.)
+2. With no judge var set: `OPENAI_API_KEY` present → `openai_judge()`.
+3. With no judge var set: `ANTHROPIC_API_KEY` present → `anthropic_judge()`.
+4. Otherwise → `fake_judge` (deterministic, free, used in CI without keys —
+   and refused by `check --strict-judge`).
 
 Run `agentprdiff check` with at least one `semantic()` grader to see a
 banner that prints which judge was actually selected — useful for

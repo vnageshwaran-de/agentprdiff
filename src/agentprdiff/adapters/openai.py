@@ -43,9 +43,10 @@ not the running event loop::
             # awaitable iff the underlying tool is `async def`...
             return final_text, trace
 
-    def my_agent(query: str):
-        # agentprdiff's runner is sync — bridge with asyncio.run.
-        return asyncio.run(my_agent_async(query))
+    # Since 0.5.0 the async function itself is a valid agent — pass
+    # ``my_agent_async`` straight to ``suite(agent=...)``; the runner
+    # resolves the coroutine (even inside a running event loop). A sync
+    # asyncio.run wrapper is only needed on agentprdiff < 0.5.0.
 
 The Trace's ``suite_name`` / ``case_name`` / ``input`` are filled in by
 ``run_agent`` after the agent returns; you can leave them blank inside the

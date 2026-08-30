@@ -88,11 +88,13 @@ the wall-clock time of a single serial run.
 
 The `semantic()` grader picks a judge in this order:
 
-1. `AGENTPRDIFF_JUDGE=fake` → deterministic keyword matching.
-2. `AGENTPRDIFF_JUDGE=openai` *or* `OPENAI_API_KEY` set → `openai_judge()`
-   (default model `gpt-4o-mini`).
-3. `AGENTPRDIFF_JUDGE=anthropic` *or* `ANTHROPIC_API_KEY` set →
-   `anthropic_judge()` (default model `claude-haiku-4-5-20251001`).
+1. An explicit `AGENTPRDIFF_JUDGE` wins outright: `fake` → keyword
+   matching, `openai` → `openai_judge()` (default model `gpt-4o-mini`),
+   `anthropic` → `anthropic_judge()` (default model
+   `claude-haiku-4-5-20251001`). Unrecognized values fall through to
+   `fake_judge`.
+2. No judge var set, `OPENAI_API_KEY` present → `openai_judge()`.
+3. No judge var set, `ANTHROPIC_API_KEY` present → `anthropic_judge()`.
 4. Otherwise → `fake_judge` (silent fallback).
 
 :::caution Silent fallback
@@ -120,8 +122,10 @@ fallback never sneaks past code review.
 
 ### What `agentprdiff` does *not* read
 
-The library does not look for your agent's API keys. Your agent is plain
-Python; it reads whatever env vars it always read.
+The library never *uses* your agent's API keys — your agent is plain
+Python and reads whatever env vars it always read. (It does check the
+*presence* of `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` to pick a default
+judge and to detect the silent fallback for `--strict-judge`.)
 
 ## Pricing tables
 
@@ -212,7 +216,7 @@ Anything that needs a Python expression goes in `suite.py`:
 
 ```python
 from agentprdiff import case, suite
-from agentprdiff.graders import contains, latency_lt_ms
+from agentprdiff.graders import contains, latency_lt_ms, semantic
 from agentprdiff.graders.semantic import openai_judge
 from agentprdiff.adapters import register_prices
 

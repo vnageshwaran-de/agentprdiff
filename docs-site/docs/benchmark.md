@@ -30,7 +30,7 @@ So we built two small but realistic agents:
   fences."*
 
 We wrote their behavioral contracts as [agentprdiff](https://agentprdiff.dev)
-suites — 7 cases, 26 assertions, **all deterministic**: substring, regex,
+suites — 7 cases, 27 assertions, **all deterministic**: substring, regex,
 tool-call, and length checks. No LLM-as-judge anywhere, so every regression
 reported here is mechanically verifiable by reading the trace.
 

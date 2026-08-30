@@ -69,9 +69,12 @@ The case now pins your fallback path.
 
 ### What happens
 
-If a custom grader raises, the failure is wrapped into a `GradeResult`
-and the case fails — it does not crash the run. Specifically, the
-`semantic` grader catches judge exceptions:
+The runner calls graders bare — a **custom grader that raises kills the
+whole run** with a traceback, so wrap your grader body in `try`/`except`
+and return a failing `GradeResult` instead (the "Tip for custom graders"
+below is a requirement, not a nicety). The built-in `semantic` grader
+already does this for its judge backend — a judge exception becomes a
+failed result, not a crash:
 
 ```python
 try:
@@ -106,8 +109,10 @@ def my_grader(...):
     return _grader
 ```
 
-A grader that raises mid-run kills the case but doesn't kill the suite —
-all subsequent cases still execute.
+A judge exception inside `semantic()` fails that one case; subsequent
+cases still execute. A bare `raise` from a custom grader, by contrast,
+aborts the whole invocation — which is why custom graders must catch
+their own exceptions.
 
 ## Failure 3 — The judge is unreachable
 
@@ -259,7 +264,7 @@ Before shipping a suite, verify all of the following are visible:
 | Failure | Visible where |
 |---|---|
 | Agent raises | Notes column: `error: <ExceptionType>: <message>` |
-| Grader fails | Notes column: `<grader_name> <reason>` |
+| Grader fails | Notes column: `<grader_name> <reason>` (in `check` mode with a baseline, only when the failure is a regression) |
 | Judge unreachable | Notes column: `judge raised ...` |
 | First-run-bad | `REGRESSION` even without baseline |
 | Filter typo | Exit 2 + available case names |

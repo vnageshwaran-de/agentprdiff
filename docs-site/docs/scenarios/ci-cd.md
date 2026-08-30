@@ -38,6 +38,16 @@ jobs:
           AGENTPRDIFF_JUDGE: anthropic
 ```
 
+When suites use `semantic()` with a real judge, tell the action to
+install the matching SDK extra — the judge imports it lazily and a
+missing package turns every semantic assertion into a failure:
+
+```yaml
+        with:
+          suites: "suites/*.py"
+          version: "[anthropic]"     # pip spec: agentprdiff[anthropic]
+```
+
 Reviewers see the diff where they already are — in the PR — instead of
 digging through job logs. Inputs: `suites`, `version` (pip spec, e.g.
 `==0.5.0`), `install` (set `"false"` if your workflow already installs
@@ -66,7 +76,7 @@ jobs:
         with: { python-version: "3.11" }
       - run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -r requirements.txt agentprdiff
       - env:
           # Match whatever env var your production agent reads.
           OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
@@ -105,7 +115,7 @@ agentprdiff:
   variables:
     AGENTPRDIFF_JUDGE: "anthropic"
   before_script:
-    - pip install -e ".[dev]"
+    - pip install -r requirements.txt agentprdiff
   script:
     - agentprdiff check suites/*.py --json-out artifacts/agentprdiff.json
   artifacts:
@@ -126,7 +136,7 @@ jobs:
       - image: cimg/python:3.11
     steps:
       - checkout
-      - run: pip install -e ".[dev]"
+      - run: pip install -r requirements.txt agentprdiff
       - run:
           name: agentprdiff check
           command: |
@@ -148,7 +158,7 @@ workflows:
 steps:
   - label: ":robot_face: agentprdiff"
     command: |
-      pip install -e ".[dev]"
+      pip install -r requirements.txt agentprdiff
       agentprdiff check suites/*.py --json-out artifacts/agentprdiff.json
     artifact_paths: "artifacts/agentprdiff.json"
     env:
@@ -157,32 +167,38 @@ steps:
 
 ## What the JSON artifact looks like
 
+One file per invocation, wrapping one envelope per suite:
+
 ```json
 {
-  "suite": "customer_support",
-  "mode": "check",
-  "summary": {
-    "cases_total": 4,
-    "cases_passed": 4,
-    "cases_regressed": 0,
-    "has_regression": false
-  },
-  "cases": [
+  "reports": [
     {
-      "suite_name": "customer_support",
-      "case_name": "refund_happy_path",
-      "trace": { "...": "full Trace JSON" },
-      "grader_results": [
-        { "passed": true, "grader_name": "contains('refund')", "reason": "..." }
-      ],
-      "delta": {
-        "baseline_exists": true,
-        "cost_delta_usd": 0.0,
-        "latency_delta_ms": 12.3,
-        "tool_sequence_changed": false,
-        "output_changed": false,
-        "assertion_changes": [...]
-      }
+      "suite": "customer_support",
+      "mode": "check",
+      "summary": {
+        "cases_total": 4,
+        "cases_passed": 4,
+        "cases_regressed": 0,
+        "has_regression": false
+      },
+      "cases": [
+        {
+          "suite_name": "customer_support",
+          "case_name": "refund_happy_path",
+          "trace": { "...": "full Trace JSON" },
+          "grader_results": [
+            { "passed": true, "grader_name": "contains('refund')", "reason": "..." }
+          ],
+          "delta": {
+            "baseline_exists": true,
+            "cost_delta_usd": 0.0,
+            "latency_delta_ms": 12.3,
+            "tool_sequence_changed": false,
+            "output_changed": false,
+            "assertion_changes": ["..."]
+          }
+        }
+      ]
     }
   ]
 }
@@ -191,8 +207,12 @@ steps:
 Stable schema, easy to grep:
 
 ```bash
-jq '.summary.cases_regressed' artifacts/agentprdiff.json
+jq '[.reports[].summary.cases_regressed] | add' artifacts/agentprdiff.json
 ```
+
+(Before 0.5.0 the file held a single suite's envelope at the top level —
+and each suite in an invocation overwrote the last. The `reports`
+wrapper fixed that; update old `jq` paths accordingly.)
 
 ## Conditional skip when secrets are missing
 

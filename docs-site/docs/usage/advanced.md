@@ -145,6 +145,8 @@ expect = [
 To plug in a custom judge — anything from a regex to a fine-tuned classifier:
 
 ```python
+from agentprdiff import Trace
+
 def regex_judge(rubric: str, trace: Trace) -> tuple[bool, str]:
     import re
     passed = bool(re.search(rubric, str(trace.output or ""), re.I))

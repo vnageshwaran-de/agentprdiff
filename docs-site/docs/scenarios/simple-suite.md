@@ -181,19 +181,19 @@ agentprdiff check suite.py    # exit 1; you'll see the regression
 Sample output:
 
 ```
-agentprdiff check — suite customer_support  (1/4 passed, 3 regressed)
-┏━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Case                     ┃ Result     ┃ Cost Δ ┃ Latency ┃ Notes                    ┃
-┡━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
-│ refund_happy_path        │ REGRESSION │        │         │ contains('refund') output │
-│                          │            │        │         │ does not contain 'refund' │
-│                          │            │        │         │ output changed            │
-│ non_refundable_order     │ PASS       │        │         │ output changed            │
-│ policy_question_no_tools │ REGRESSION │        │         │ ...                      │
-│ missing_order_number     │ PASS       │        │         │  —                       │
-└──────────────────────────┴────────────┴────────┴─────────┴──────────────────────────┘
+agentprdiff check — suite customer_support  (2/4 passed, 2 regressed)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Case                     ┃ Result     ┃ Cost Δ ┃ Latency Δ ┃ Notes                    ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ refund_happy_path        │ REGRESSION │        │           │ contains('refund') output │
+│                          │            │        │           │ does not contain 'refund' │
+│ non_refundable_order     │ REGRESSION │        │           │ contains('agent') output  │
+│                          │            │        │           │ does not contain 'agent'  │
+│ policy_question_no_tools │ PASS       │        │           │ output changed           │
+│ missing_order_number     │ PASS       │        │           │  —                       │
+└──────────────────────────┴────────────┴────────┴───────────┴──────────────────────────┘
 
-✗ 3 regression(s) detected.
+✗ 2 regression(s) detected.
 ```
 
 Restore the file (`git restore agent.py`) and `check` is green again.
@@ -204,8 +204,14 @@ Restore the file (`git restore agent.py`) and `check` is green again.
   trace as `.agentprdiff/baselines/customer_support/<case>.json`.
 - `check` re-ran the agent and compared each new trace to its baseline —
   per-grader pass/fail, cost / latency / tokens, tool sequence, output
-  text. The text edit broke `contains("refund")` for two cases; CI exits
+  text. The `sed` rewrote the `if "refund" in query` branch condition
+  too, so both refund queries fall through to the clarification reply:
+  `contains("refund")` breaks on `refund_happy_path` and
+  `contains("agent")` breaks on `non_refundable_order`. CI exits
   non-zero.
-- `non_refundable_order` only asserts `contains("agent")`, which is still
-  true — but `output changed` lands in the Notes column so reviewers can
-  still see the drift even though no assertion regressed.
+- `policy_question_no_tools` keeps passing — its assertions
+  (`contains("30 days")`, `no_tool_called`, the semantic rubric) don't
+  depend on the word that changed — but `output changed` lands in its
+  Notes column so reviewers still see the drift even though no assertion
+  regressed. (That note only appears on non-regressed rows; regressed
+  rows show the failing assertions instead.)

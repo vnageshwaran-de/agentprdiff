@@ -129,8 +129,11 @@ async def my_agent_async(query: str) -> tuple[str, Trace]:
                 tools[tc.function.name](**json.loads(tc.function.arguments))
         return msg.content or "", trace
 
-def my_agent(query: str) -> tuple[str, Trace]:
-    return asyncio.run(my_agent_async(query))
+# Since 0.5.0 the async function IS a valid agent — pass it straight to
+# suite(agent=my_agent_async); the runner resolves the coroutine (even
+# inside Jupyter). Only keep a sync wrapper for agentprdiff < 0.5.0:
+#
+#   def my_agent(query): return asyncio.run(my_agent_async(query))
 ```
 
 ### Why this works
@@ -258,8 +261,10 @@ with instrument_client(client, prices=PRICES) as trace:
   block, then restores the original on exit — even if the agent raises.
 - The patch is scoped to the *client instance*. Other client instances and
   global SDK state are untouched.
-- Tool wrappers always keep their original calling convention. Sync tools
-  stay sync, async tools stay awaitable.
+- The **OpenAI** adapter's tool wrappers keep their original calling
+  convention — sync tools stay sync, async tools stay awaitable. The
+  **Anthropic** adapter's `instrument_tools` wraps sync tools only
+  (async Anthropic support is on the roadmap).
 - `cost_usd` is filled from `agentprdiff.adapters.pricing.DEFAULT_PRICES`
   unless you override it. Missing models trigger one `RuntimeWarning` per
-  process (loud but not spammy).
+  process *per model name* (loud but not spammy).

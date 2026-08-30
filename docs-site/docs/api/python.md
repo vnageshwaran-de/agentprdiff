@@ -323,6 +323,35 @@ Build a `TraceDelta`. Used by `Runner.check`; rarely called directly.
 | `current_results` | `list[GradeResult]` | Grader outcomes for the current trace. |
 | `baseline_results` | `list[GradeResult] \| None` | Grader outcomes for the baseline (recommended; otherwise the differ can't compute per-assertion regressions accurately). |
 
+## `agentprdiff.trace_store`
+
+```python
+class TraceStore(ABC):
+    def save_baseline(self, trace: Trace) -> None: ...
+    def load_baseline(self, suite_name: str, case_name: str) -> Trace | None: ...
+    def save_run_trace(self, run_id: str, trace: Trace) -> None: ...
+    def ensure_initialized(self) -> None: ...   # optional hook, no-op default
+    def fresh_run_id(self) -> str: ...          # default: UTC timestamp
+
+class InMemoryTraceStore(TraceStore): ...
+```
+
+The pluggable persistence interface (shipped 0.4.0). `Runner` accepts any
+`TraceStore` — implement this (S3, GCS, a database) instead of
+subclassing `BaselineStore`. `InMemoryTraceStore` backs tests and
+ephemeral runs.
+
+## `agentprdiff.masking`
+
+```python
+MaskRule(...)                 # declarative redaction rule
+mask_trace(trace, rules) -> Trace
+```
+
+Field-level trace masking for PII and other sensitive data (shipped
+0.4.0): redact specific fields from recorded traces before they are
+stored or diffed. See the module docstring for rule syntax.
+
 ## `BaselineStore`
 
 ```python

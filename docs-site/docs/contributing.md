@@ -68,9 +68,12 @@ src/agentprdiff/
 ├── reporters.py       # Terminal / JSON / Review
 ├── scaffold.py        # `agentprdiff scaffold` templates
 ├── cli.py             # Click app
+├── trace_store.py     # TraceStore ABC + InMemoryTraceStore
+├── masking.py         # field-level trace masking
 ├── graders/
 │   ├── deterministic.py
-│   └── semantic.py
+│   ├── semantic.py
+│   └── http_judge.py
 └── adapters/
     ├── pricing.py
     ├── openai.py
@@ -94,7 +97,7 @@ examples/              # quickstart + regression-tour demos
 2. Re-export it from `src/agentprdiff/graders/__init__.py`.
 3. Add it to the README's "batteries-included graders" list.
 4. Add at least one passing-test and one failing-test case in
-   `tests/test_graders_deterministic.py`.
+   `tests/test_graders.py`.
 
 ```python
 # src/agentprdiff/graders/deterministic.py
@@ -121,7 +124,8 @@ def starts_with(prefix: str) -> Grader:
 2. Lazy-import any SDK so the base wheel doesn't pull it in.
 3. Update `_default_judge` if it should be a fallback option.
 4. Add `describe_default_judge` coverage so the banner stays accurate.
-5. Add tests in `tests/test_graders_semantic.py` using a fake transport.
+5. Add tests in `tests/test_graders.py` (see `tests/test_http_judge.py`
+   for the fake-transport pattern).
 
 ## Adding a new SDK adapter
 
@@ -169,7 +173,7 @@ If the reporter wants a CLI flag (like `--junit-out`), add the option in
 ## Releasing (maintainers)
 
 ```bash
-# bump version in pyproject.toml + src/agentprdiff/__init__.py
+# bump version in pyproject.toml (runtime __version__ reads package metadata)
 # add CHANGELOG entry
 git tag v0.x.y && git push --tags
 # GitHub Action publishes to PyPI on tag push
