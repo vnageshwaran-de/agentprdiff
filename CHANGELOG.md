@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Reproducible model-swap benchmark (`benchmark/`): two realistic agents
+  (a tool-calling customer-support agent with a refund-eligibility
+  guardrail, and a strict-JSON extraction agent) with deterministic
+  behavioral suites, and a driver that records baselines then checks a
+  matrix of controlled changes — within-vendor downgrades, a
+  cross-vendor swap, and a "harmless" prompt rewrite — generating
+  `RESULTS.md` with every assertion that flipped and why. No LLM-as-judge
+  anywhere: every reported regression is mechanically verifiable.
+  Keyless `stub-smoke` / `stub-regression` scenarios exercise the harness
+  in CI.
+
 ## [0.5.0] — 2026-08-30
 
 The "trustworthy green builds" release: strict judging, stable assertion
