@@ -128,6 +128,7 @@ nav:
       - Graders: api/graders.md
       - SDK Adapters: api/adapters.md
   - Guides:
+      - How It Compares: comparison.md
       - Architecture: architecture.md
       - Best Practices: best-practices.md
       - Troubleshooting: troubleshooting.md

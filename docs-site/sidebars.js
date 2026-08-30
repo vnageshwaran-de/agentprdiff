@@ -50,7 +50,7 @@ module.exports = {
       type: "category",
       label: "Guides",
       collapsed: false,
-      items: ["architecture", "best-practices", "troubleshooting", "faq"],
+      items: ["comparison", "architecture", "best-practices", "troubleshooting", "faq"],
     },
     {
       type: "category",

@@ -40,7 +40,17 @@ assertions just flipped. It doesn't read PR text or `git diff` output.
 | Works without API keys | no | yes (deterministic graders + `fake_judge`) |
 
 LLM-as-judge is great for offline benchmarking. `agentprdiff` is the
-inner-loop CI gate. Use both.
+inner-loop CI gate. Use both. For a tool-by-tool map (promptfoo,
+DeepEval, Braintrust, RAGAS), see [How It Compares](./comparison.md).
+
+## Is this the same as "Agent Diff" (agentdiff.dev)?
+
+No — similar name, different product. Agent Diff provides sandboxed
+replicas of third-party APIs (Slack, Linear, Box, Google Calendar) for
+evaluating and RL-training agents against simulated services.
+`agentprdiff` is snapshot/regression testing for the behavior of your
+own agent, with baselines in your git repo. See the
+[comparison page](./comparison.md#not-to-be-confused-with-agent-diff).
 
 ## Do I need API keys to run it?
 
