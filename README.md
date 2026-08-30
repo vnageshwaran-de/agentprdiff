@@ -111,7 +111,7 @@ This is the same loop as Jest snapshot tests or VCR cassettes — applied to LLM
 
 `agentprdiff` doesn't read your agent's API key — your agent does, through whatever env var it already uses. Set that locally (in `.env`, your shell, direnv, whatever) and as a GitHub Actions secret in CI. The scaffold's workflow YAML has the right shape; you fill in the env var name to match your agent.
 
-The `semantic()` grader is the one piece of agentprdiff that can use an API key directly — for the LLM judge. Without one, it silently falls back to keyword matching. Set `ANTHROPIC_API_KEY` (cheaper) or `OPENAI_API_KEY` if you want a real judge in CI; leave both unset to keep CI free with fake_judge.
+The `semantic()` grader is the one piece of agentprdiff that can use an API key directly — for the LLM judge. Without one, it silently falls back to keyword matching — which is why CI should run `check --strict-judge`, turning that silent downgrade into a build failure (explicit `AGENTPRDIFF_JUDGE=fake` still passes). Set `ANTHROPIC_API_KEY` (cheaper) or `OPENAI_API_KEY` if you want a real judge in CI; set `AGENTPRDIFF_JUDGE=fake` deliberately to keep CI free with fake_judge.
 
 See [AGENTS.md → API keys](https://github.com/vnageshwaran-de/agentprdiff/blob/main/AGENTS.md#api-keys--what-to-set-where-and-how-to-ask-the-user-about-them) for the full setup (local options, CI secrets, what never to do).
 
@@ -138,7 +138,7 @@ agentprdiff scaffold ai_content_summary --recipe sync-openai
 Writes the canonical layout (`suites/__init__.py`, `_eval_agent.py`, `_stubs.py`, `<name>.py`, `<name>_cases.md`, `suites/README.md`, and `.github/workflows/agentprdiff.yml`) with TODO markers where you wire in your agent. The `<name>_cases.md` file is a *case dossier* — reviewer-facing prose with one block per case (what it tests, input, assertions in plain English, file:line references to production code, and the application impact if the case regresses). Three recipes:
 
 - `sync-openai` (default): uses `instrument_client` from the OpenAI adapter with a sync `OpenAI()` client.
-- `async-openai`: same `instrument_client`, paired with an `asyncio.run` bridge so an `AsyncOpenAI` agent works with agentprdiff's sync runner. The adapter detects the async client at entry — no separate API.
+- `async-openai`: same `instrument_client` with an `AsyncOpenAI` client. Since 0.5.0 the runner resolves `async def` agents natively; the template keeps a small `asyncio.run` bridge only for older agentprdiff pins.
 - `stubbed`: substitutes a single LLM helper instead of the SDK client. Best for summarization / classification / embedding-prep agents — see [`docs/adapters.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/docs/adapters.md#stubbed-llm-boundary-pattern).
 
 The generated workflow includes `permissions: contents: read` so GHAS doesn't flag it. Pre-existing files are never overwritten.
@@ -181,8 +181,9 @@ async def my_agent_async(query: str):
         # ... await tools[name](**args) for async tools, tools[name](**args) for sync ...
         return final_text, trace
 
-def my_agent(query: str):
-    return asyncio.run(my_agent_async(query))
+# Since 0.5.0, pass my_agent_async straight to suite(agent=...) — the runner
+# resolves the coroutine (even inside Jupyter). A sync asyncio.run wrapper is
+# only needed on agentprdiff < 0.5.0.
 ```
 
 The patch is scoped to the specific client instance and reversed when the `with` block exits — no global SDK state is touched. Anthropic adopters use `agentprdiff.adapters.anthropic` with the same shape (sync clients today; async Anthropic is on the roadmap).
@@ -217,21 +218,37 @@ Agents that return just an output still work — `agentprdiff` wraps them and ca
 
 ## CI integration
 
+The fastest path is the official GitHub Action — it installs agentprdiff, runs `check`, and posts the behavioral diff as a living comment on the PR:
+
 ```yaml
 # .github/workflows/agents.yml
 name: agent-regression
 on: [pull_request]
 permissions:
-  contents: read   # least-privilege; GHAS flags workflows without this.
+  contents: read
+  pull-requests: write   # for the behavioral-diff PR comment
 jobs:
   agentprdiff:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: vnageshwaran-de/agentprdiff@main
+        with: { suites: "suites/*.py" }
+```
+
+Rolling your own instead:
+
+```yaml
+jobs:
+  agentprdiff:
+    runs-on: ubuntu-latest
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
-      - run: pip install -e ".[dev]"
-      - run: agentprdiff check suites/*.py --json-out artifacts/agentprdiff.json
+      - run: pip install -r requirements.txt agentprdiff
+      - run: agentprdiff check suites/*.py --strict-judge --json-out artifacts/agentprdiff.json
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: agentprdiff, path: artifacts/ }
@@ -256,7 +273,7 @@ agentprdiff record suite.py
 agentprdiff check  suite.py   # exit 0
 
 # now break the agent and watch agentprdiff catch it
-sed -i "s/refund/noundr/g" agent.py
+sed -i "s/refund/noundr/g" agent.py   # macOS: sed -i '' "s/refund/noundr/g" agent.py
 agentprdiff check suite.py    # exit 1; see the diff
 ```
 
@@ -306,7 +323,7 @@ agentprdiff review suite.py --skip slow
 
 ## Status
 
-`agentprdiff` is **alpha** (0.2.x). The core model, CLI, and OpenAI / Anthropic SDK adapters are stable. The OpenAI adapter covers both sync `OpenAI` and async `AsyncOpenAI` clients via the same `instrument_client` context manager. Async Anthropic, LangChain/LangGraph adapters, and a JS companion package for the Vercel AI SDK are on the 0.3 roadmap. See [`CHANGELOG.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/CHANGELOG.md).
+`agentprdiff` is at **0.5.x**. The core model, CLI, OpenAI / Anthropic SDK adapters, multi-run flakiness handling, parallel execution, and the GitHub Action are stable; `async def` agents are supported natively. Async Anthropic, LangChain/LangGraph adapters, and a JS companion package for the Vercel AI SDK are on the [roadmap](https://agentprdiff.dev/roadmap/). See [`CHANGELOG.md`](https://github.com/vnageshwaran-de/agentprdiff/blob/main/CHANGELOG.md).
 
 Feedback, bug reports, and PRs extremely welcome. Open an issue or @ me.
 
