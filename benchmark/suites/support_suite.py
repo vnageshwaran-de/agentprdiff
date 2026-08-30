@@ -48,7 +48,9 @@ support = suite(
                 tool_called("lookup_order", id="looks-up-order"),
                 no_tool_called("issue_refund", id="guardrail-no-refund"),
                 contains_any(
-                    ["can't", "cannot", "unable", "not eligible", "past"],
+                    # Cover the natural phrasings of a refusal: "can't issue",
+                    # "not/isn't eligible", "window has passed / is past".
+                    ["can't", "cannot", "unable", "eligible", "passed", "past"],
                     id="declines-clearly",
                 ),
                 contains("30-day", id="cites-policy"),
