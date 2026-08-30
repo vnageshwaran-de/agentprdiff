@@ -116,6 +116,8 @@ Rules for filling this in:
 - **Pick at least one budget row.** Cost and latency regress silently when models change. `cost_lt_usd(0.01)` and `latency_lt_ms(10000)` should appear on most cases.
 - **Cover all tool dispatch paths.** If the agent has 4 tools, you want at least one case per tool (route to it correctly) plus at least one case for "no tool" (clarification, refusal).
 - **Don't assert exact text.** Use `contains_any([...])` with synonyms or `regex_match(...)` for patterns. Models drift on wording; you want assertions that survive rewording.
+- **Give long-lived assertions a stable `id=`** (agentprdiff ≥ 0.5.0): `contains("refund", id="mentions-refund")`. Diffs match assertions by id, so later renaming the argument doesn't register as a removed + added assertion — a documented source of false regressions.
+- **Mark genuinely stochastic cases with `min_pass_rate`** (agentprdiff ≥ 0.5.0): `case(..., min_pass_rate=0.6)` plus `check --runs 3` in CI tolerates one wobble out of three without letting real regressions through. Reserve this for cases with an inherently stochastic step — a deterministic assertion that needs a pass rate below 1.0 to stay green is telling you the assertion (or the agent) is wrong.
 
 Show the user the filled-in table for confirmation BEFORE writing the suite file. Adjust based on their feedback.
 
@@ -204,7 +206,7 @@ If the production agent doesn't expose a `_call_llm` helper, inline the `client.
 
 ### Recipe A async — agent uses AsyncOpenAI
 
-Use this when the production agent calls `await client.chat.completions.create(...)` on an `AsyncOpenAI` (or async OpenAI-compatible) client. The adapter detects the async client at `instrument_client` entry and installs an awaitable patched `create`; tools that are `async def` are wrapped as awaitable, sync tools stay sync. agentprdiff's runner is sync, so the public `eval_agent` bridges to the async inner function via `asyncio.run`.
+Use this when the production agent calls `await client.chat.completions.create(...)` on an `AsyncOpenAI` (or async OpenAI-compatible) client. The adapter detects the async client at `instrument_client` entry and installs an awaitable patched `create`; tools that are `async def` are wrapped as awaitable, sync tools stay sync. **Since agentprdiff 0.5.0 the runner resolves coroutines natively** — you can pass the `async def` function itself as the suite's `agent` and skip the bridge entirely (this works inside Jupyter and async test runners too). The `asyncio.run` bridge below is the backward-compatible form; keep it only if the target repo pins agentprdiff < 0.5.0.
 
 ```python
 """Eval-mode wrapper for an AsyncOpenAI agent."""
@@ -276,7 +278,7 @@ Notes:
 
 - The `with` block is a regular `with`, not `async with` — the patch is bound to the client instance, not to an event loop.
 - A single `TOOL_MAP` may mix sync and async tools; the wrapper shape is decided per entry. `asyncio.iscoroutinefunction(fn)` is the safe runtime check before deciding whether to `await fn(...)`.
-- If your project already has its own loop manager (e.g., a long-running test fixture) and you don't want `asyncio.run` per case, replace the bridge with whatever scheduling primitive you use — only the inner `_eval_agent_async` matters to agentprdiff.
+- On agentprdiff ≥ 0.5.0 the simplest form is no bridge at all: `suite(agent=_eval_agent_async, ...)` — the runner resolves the coroutine, including from inside an already-running event loop. If you keep a bridge for older versions and your project has its own loop manager, replace `asyncio.run` with whatever scheduling primitive you use — only the inner `_eval_agent_async` matters to agentprdiff.
 
 ### Recipe B — agent uses the Anthropic Messages API
 
@@ -533,7 +535,9 @@ This step exists because `semantic(...)` graders silently fall back to `fake_jud
    - Real Anthropic judge (recommended for cost). `AGENTPRDIFF_JUDGE=anthropic` + `ANTHROPIC_API_KEY`.
    - Real OpenAI judge. `AGENTPRDIFF_JUDGE=openai` + `OPENAI_API_KEY`.
 
-   Selection precedence (`src/agentprdiff/graders/semantic.py:164`): explicit `AGENTPRDIFF_JUDGE` wins; otherwise the first key the env exposes wins; otherwise `fake_judge`. Set the explicit env var rather than relying on key-presence ordering — it eliminates the "which provider did I get?" ambiguity in CI logs.
+   Selection precedence: explicit `AGENTPRDIFF_JUDGE` wins (the legacy `AGENTGUARD_JUDGE` name still works with a DeprecationWarning); otherwise the first key the env exposes wins; otherwise `fake_judge`. Set the explicit env var rather than relying on key-presence ordering — it eliminates the "which provider did I get?" ambiguity in CI logs.
+
+   **Always add `--strict-judge` to the CI `check` invocation** (agentprdiff ≥ 0.5.0). It turns the silent fake_judge fallback — a missing or rotated key quietly downgrading semantic assertions to keyword matching — into a build failure. Explicit `AGENTPRDIFF_JUDGE=fake` still passes, so the free mode remains available as a deliberate choice.
 
 3. **Document the mode in `suites/README.md`** under a heading literally called `## Semantic Judge Keys`. The section names the judge mode CI runs in, the env var(s) it sets, and how a local developer reproduces the same mode. Adopters and reviewers should be able to answer "are our semantic graders LLM-backed?" without grepping the workflow file.
 
@@ -572,7 +576,31 @@ The `runs/` directory under `.agentprdiff/` is git-ignored automatically. Only `
 ## Step 7 — wire CI
 *Produces: `.github/workflows/agentprdiff.yml` (strongly recommended; not strictly required).*
 
-Create `.github/workflows/agentprdiff.yml`:
+**The short form — the official GitHub Action.** One step installs agentprdiff, runs `check` over the suites, and posts the behavioral diff (assertion flips, cost/latency deltas, output diffs) as a living comment on the pull request:
+
+```yaml
+name: agentprdiff
+on: [pull_request]
+permissions:
+  contents: read
+  pull-requests: write   # for the behavioral-diff PR comment
+jobs:
+  agentprdiff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: vnageshwaran-de/agentprdiff@main
+        with:
+          suites: "suites/<project_name>.py"
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          AGENTPRDIFF_JUDGE: openai
+```
+
+Prefer this unless the project needs custom install steps or path filtering — in which case use the hand-rolled workflow below.
+
+**The hand-rolled form.** Create `.github/workflows/agentprdiff.yml`:
 
 ```yaml
 name: agentprdiff
@@ -611,7 +639,7 @@ jobs:
             echo "::warning::API key secret not set — skipping agentprdiff check."
             exit 0
           fi
-          agentprdiff check suites/<project_name>.py --json-out artifacts/agentprdiff.json
+          agentprdiff check suites/<project_name>.py --strict-judge --json-out artifacts/agentprdiff.json
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: agentprdiff-trace, path: artifacts/ }
@@ -731,7 +759,7 @@ When the user re-records intentionally, the new baseline JSON shows up as a norm
 
 ### `agentprdiff check` — accumulates a timestamped directory per run
 
-Every `check` writes to `.agentprdiff/runs/<YYYYMMDDTHHMMSSZ>/<suite>/<case>.json`. Run check 50 times locally and you have 50 directories. This is intentional — each run's full trace stays available so you can inspect a specific historical run if needed. There is **no automatic cleanup** in 0.2.
+Every `check` writes to `.agentprdiff/runs/<YYYYMMDDTHHMMSSZ>/<suite>/<case>.json`. Run check 50 times locally and you have 50 directories. This is intentional — each run's full trace stays available so you can inspect a specific historical run if needed. There is **no automatic cleanup**.
 
 ```bash
 agentprdiff check suites/<project>.py
@@ -751,7 +779,7 @@ If `--json-out` is passed, the JSON report file is **overwritten** on every run 
 agentprdiff check suites/<project>.py --json-out artifacts/agentprdiff.json
 agentprdiff check suites/<project>.py --json-out artifacts/agentprdiff.json
 ls artifacts/
-#  agentprdiff.json     ← single file, overwritten on each run
+#  agentprdiff.json     ← single file per invocation ({"reports": [...]}, one entry per suite), overwritten on each run
 ```
 
 ### `agentprdiff review` — same as check, but exits 0 and renders verbosely
