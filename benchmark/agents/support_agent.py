@@ -110,7 +110,10 @@ def _run_anthropic(user_message: str):
 
     from agentprdiff.adapters.anthropic import instrument_client, instrument_tools
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = anthropic.Anthropic(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        **common.anthropic_client_kwargs(),
+    )
     with instrument_client(client) as trace:
         tools = instrument_tools(common.TOOL_MAP, trace)
         messages = [{"role": "user", "content": user_message}]

@@ -128,6 +128,20 @@ def provider() -> str:
     return os.environ.get("BENCH_PROVIDER", "stub").lower()
 
 
+def anthropic_client_kwargs() -> dict[str, Any]:
+    """Extra kwargs for anthropic.Anthropic(...).
+
+    Identity-linked API keys (newer Anthropic Console keys tied to a user
+    identity) require an ``anthropic-workspace-id`` header on every request.
+    Set ``ANTHROPIC_WORKSPACE_ID`` and the benchmark passes it through;
+    standard workspace keys need nothing.
+    """
+    workspace = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    if workspace:
+        return {"default_headers": {"anthropic-workspace-id": workspace}}
+    return {}
+
+
 def model() -> str:
     return os.environ.get("BENCH_MODEL", "stub-model")
 

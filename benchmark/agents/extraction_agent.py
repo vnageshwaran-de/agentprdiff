@@ -63,7 +63,10 @@ def _run_anthropic(email_text: str):
 
     from agentprdiff.adapters.anthropic import instrument_client
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    client = anthropic.Anthropic(
+        api_key=os.environ["ANTHROPIC_API_KEY"],
+        **common.anthropic_client_kwargs(),
+    )
     with instrument_client(client) as trace:
         resp = client.messages.create(
             model=common.model(),
