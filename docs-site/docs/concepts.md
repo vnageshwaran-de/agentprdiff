@@ -56,6 +56,12 @@ classDiagram
 A named group of `Case`s sharing one agent under test. Built with the
 `suite(name=, agent=, cases=, description=)` factory.
 
+The agent is any callable `(input) -> output` or
+`(input) -> (output, Trace)` — and `async def` agents work transparently:
+the runner resolves the coroutine for you (including from inside an
+already-running event loop, e.g. Jupyter), so LangGraph/LlamaIndex-style
+async pipelines don't need a sync wrapper.
+
 ### Case
 
 One input, plus the assertions that must hold for the resulting trace.

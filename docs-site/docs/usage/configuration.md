@@ -35,6 +35,7 @@ top-level Click group.
 | `check` | `--fail-on/--no-fail-on` | `--fail-on` | When `--no-fail-on`, regressions are reported but exit code stays 0. |
 | `check` | `--strict-judge` | off | Exit 1 when any `semantic()` grader was judged by `fake_judge` via **silent fallback** (no judge env var, no API key). Recommended in CI; will become the default in v1.0. Explicit `AGENTPRDIFF_JUDGE=fake` still passes. |
 | `check` | `--runs N` | `1` | Execute each case N times; the case passes when at least its `min_pass_rate` fraction of attempts fully pass. The flakiness guard for stochastic agents — see below. |
+| `record`, `check` | `--concurrency N` | `1` | Execute up to N cases at once on a thread pool. Suites are I/O-bound, so wall-clock time drops near-linearly — pairs well with `--runs`. Your agent must be safe to call from multiple threads. |
 | `scaffold` | `--recipe {sync-openai,async-openai,stubbed}` | `sync-openai` | Picks the eval-wrapper template. |
 | `scaffold` | `--dir PATH` | `.` | Project root to scaffold into. |
 
@@ -77,6 +78,9 @@ Semantics:
 
 Cost note: `--runs 3` triples agent invocations (and judge calls for
 `semantic()` graders) for every case, so scope it to the suites that need it.
+It triples *cost*, not necessarily *time*: pair it with `--concurrency` to
+run cases in parallel — `--runs 3 --concurrency 8` usually finishes in about
+the wall-clock time of a single serial run.
 
 ## Environment variables
 

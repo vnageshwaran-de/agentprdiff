@@ -59,6 +59,17 @@ _LIST_OPTION = click.option(
     is_flag=True,
     help="Print suite/case names without running anything, then exit.",
 )
+_CONCURRENCY_OPTION = click.option(
+    "--concurrency",
+    type=click.IntRange(min=1),
+    default=1,
+    show_default=True,
+    help=(
+        "Execute up to this many cases at once on a thread pool. Agent "
+        "suites are I/O-bound, so this cuts wall-clock time near-linearly. "
+        "Your agent must be safe to call from multiple threads."
+    ),
+)
 
 
 @click.group(help="Snapshot testing for LLM agents.")
@@ -97,6 +108,7 @@ def cmd_init(ctx: click.Context) -> None:
 @_CASE_OPTION
 @_SKIP_OPTION
 @_LIST_OPTION
+@_CONCURRENCY_OPTION
 @click.pass_context
 def cmd_record(
     ctx: click.Context,
@@ -105,10 +117,11 @@ def cmd_record(
     case_patterns: tuple[str, ...],
     skip_patterns: tuple[str, ...],
     list_only: bool,
+    concurrency: int,
 ) -> None:
     """Run every suite in SUITE_FILES and save each trace as the baseline."""
     store: BaselineStore = ctx.obj["store"]
-    runner = Runner(store)
+    runner = Runner(store, concurrency=concurrency)
     terminal = TerminalReporter()
 
     suites_all = [s for f in suite_files for s in load_suites(f)]
@@ -175,6 +188,7 @@ def cmd_record(
         "with case(..., min_pass_rate=0.6) tolerates one wobble out of three."
     ),
 )
+@_CONCURRENCY_OPTION
 @click.pass_context
 def cmd_check(
     ctx: click.Context,
@@ -186,10 +200,11 @@ def cmd_check(
     fail_on_regression: bool,
     strict_judge: bool,
     runs: int,
+    concurrency: int,
 ) -> None:
     """Run every suite in SUITE_FILES and diff against saved baselines."""
     store: BaselineStore = ctx.obj["store"]
-    runner = Runner(store, runs=runs)
+    runner = Runner(store, runs=runs, concurrency=concurrency)
     terminal = TerminalReporter()
 
     suites_all = [s for f in suite_files for s in load_suites(f)]

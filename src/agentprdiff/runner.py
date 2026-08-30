@@ -11,12 +11,45 @@ Two modes:
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+
 from pydantic import BaseModel, ConfigDict, Field
 
-from .core import GradeResult, Suite, Trace, run_agent
+from .core import Case, GradeResult, Suite, Trace, run_agent
 from .differ import TraceDelta, diff_traces
 from .store import BaselineStore
 from .trace_store import TraceStore
+
+
+def _execute_case(
+    suite: Suite, case: Case, runs: int
+) -> tuple[Trace, list[GradeResult], int]:
+    """Run one case `runs` times and grade every attempt.
+
+    Returns ``(representative_trace, representative_results, runs_passed)``.
+    The representative attempt — used for baseline diffing and reporting —
+    is the last fully-passing one when any exists (the behavior we accept),
+    otherwise the last attempt (so the report shows what went wrong).
+    """
+    attempts: list[tuple[Trace, list[GradeResult], bool]] = []
+    for _ in range(runs):
+        attempt_trace = run_agent(
+            suite.agent,
+            suite_name=suite.name,
+            case_name=case.name,
+            input_value=case.input,
+        )
+        attempt_results = [g(attempt_trace) for g in case.expect]
+        fully_passed = (
+            all(r.passed for r in attempt_results) and attempt_trace.error is None
+        )
+        attempts.append((attempt_trace, attempt_results, fully_passed))
+
+    runs_passed = sum(1 for _, _, ok in attempts if ok)
+    trace, grader_results, _ = next(
+        (a for a in reversed(attempts) if a[2]), attempts[-1]
+    )
+    return trace, grader_results, runs_passed
 
 
 def _load_baseline_results(baseline: Trace) -> list[GradeResult] | None:
@@ -107,13 +140,29 @@ class Runner:
     judge it against its ``min_pass_rate`` — the flakiness guard for
     stochastic agents. `record` always runs once: a baseline is a single
     known-good trace.
+
+    ``concurrency`` (default 1) executes up to that many cases at once on a
+    thread pool. Agent suites are I/O-bound (network calls to providers), so
+    threads deliver near-linear wall-clock speedups — and they work for both
+    sync and `async def` agents. Your agent callable must be safe to invoke
+    from multiple threads when concurrency > 1. Storage writes, diffing, and
+    report assembly stay on the calling thread, in suite order.
     """
 
-    def __init__(self, store: BaselineStore | TraceStore, *, runs: int = 1) -> None:
+    def __init__(
+        self,
+        store: BaselineStore | TraceStore,
+        *,
+        runs: int = 1,
+        concurrency: int = 1,
+    ) -> None:
         if runs < 1:
             raise ValueError(f"runs must be >= 1, got {runs}")
+        if concurrency < 1:
+            raise ValueError(f"concurrency must be >= 1, got {concurrency}")
         self.store = store
         self.runs = runs
+        self.concurrency = concurrency
 
     # ------------------------------------------------------------------ api
 
@@ -131,32 +180,25 @@ class Runner:
         report = RunReport(suite_name=suite.name, mode=mode)
 
         runs = self.runs if mode == "check" else 1
-        for case in suite.cases:
-            # Execute the case `runs` times; each attempt is (trace, results,
-            # fully_passed). The representative attempt — used for baseline
-            # diffing and reporting — is the last fully-passing one when any
-            # exists (the behavior we accept), otherwise the last attempt
-            # (so the report shows what went wrong).
-            attempts: list[tuple[Trace, list[GradeResult], bool]] = []
-            for _ in range(runs):
-                attempt_trace = run_agent(
-                    suite.agent,
-                    suite_name=suite.name,
-                    case_name=case.name,
-                    input_value=case.input,
-                )
-                attempt_results = [g(attempt_trace) for g in case.expect]
-                fully_passed = (
-                    all(r.passed for r in attempt_results)
-                    and attempt_trace.error is None
-                )
-                attempts.append((attempt_trace, attempt_results, fully_passed))
 
-            runs_passed = sum(1 for _, _, ok in attempts if ok)
-            representative = next(
-                (a for a in reversed(attempts) if a[2]), attempts[-1]
-            )
-            trace, grader_results, _ = representative
+        # Execute every case's attempts — concurrently on a bounded thread
+        # pool when concurrency > 1 (agent suites are I/O-bound, so threads
+        # give near-linear wall-clock speedups for sync and async agents
+        # alike). `executor.map` preserves suite order. Storage writes,
+        # diffing, and report assembly happen below on this thread.
+        def execute(case: Case) -> tuple[Trace, list[GradeResult], int]:
+            return _execute_case(suite, case, runs)
+
+        if self.concurrency > 1 and len(suite.cases) > 1:
+            workers = min(self.concurrency, len(suite.cases))
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                executed = list(executor.map(execute, suite.cases))
+        else:
+            executed = [execute(case) for case in suite.cases]
+
+        for case, (trace, grader_results, runs_passed) in zip(
+            suite.cases, executed, strict=True
+        ):
             # Persist grader results inside the trace so baselines are truly
             # frozen: check mode reads the recorded verdicts instead of
             # re-running graders against the baseline (which, for semantic

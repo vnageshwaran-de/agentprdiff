@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `async def` agents are supported transparently: `run_agent` resolves
+  the returned coroutine (including from inside an already-running event
+  loop, e.g. Jupyter — resolved on a dedicated thread there), so async
+  LangGraph/LlamaIndex-style pipelines no longer need a sync wrapper.
+- `--concurrency N` on `record` and `check`: executes up to N cases at
+  once on a thread pool. Suites are I/O-bound, so wall-clock time drops
+  near-linearly; works for sync and async agents, preserves suite order
+  in reports, and keeps storage writes and diffing on the calling
+  thread. Agents must be safe to call from multiple threads when
+  concurrency > 1. Pairs with `--runs`: `--runs 3 --concurrency 8`
+  costs 3× but takes roughly 1× wall-clock.
+
 - Official GitHub Action (`uses: vnageshwaran-de/agentprdiff@main`): a
   composite action at the repo root that installs agentprdiff, runs
   `check` over your suites, and posts the behavioral diff — assertion

@@ -11,9 +11,12 @@ and diffed across runs.
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import time
 import uuid
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -136,8 +139,25 @@ class Case(BaseModel):
 
 # An Agent is any callable `(input) -> (output, Trace)`. If the user's agent
 # returns only an output, the runner wraps it so latency is captured but the
-# returned `Trace` has empty llm_calls / tool_calls.
+# returned `Trace` has empty llm_calls / tool_calls. `async def` agents are
+# supported: the runner resolves the coroutine for you (see `run_agent`).
 AgentFn = Callable[[Any], Any]
+
+
+def _resolve_coroutine(coro: Any) -> Any:
+    """Run a coroutine to completion and return its result.
+
+    Works both from plain sync code (the normal CLI path) and from inside an
+    already-running event loop (Jupyter, async test runners), where
+    ``asyncio.run`` would raise — there we hand the coroutine to a fresh loop
+    on a dedicated thread instead.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(asyncio.run, coro).result()
 
 
 class Suite(BaseModel):
@@ -205,11 +225,16 @@ def run_agent(
     If the agent returns a `(output, Trace)` tuple, we use the returned trace
     and just fill in the metadata we can see from out here (suite/case names).
     Otherwise we build a minimal trace with latency only.
+
+    `async def` agents work transparently: the returned coroutine is resolved
+    here, so latency covers the full awaited execution.
     """
     start = time.perf_counter()
     trace: Trace
     try:
         result = agent(input_value)
+        if inspect.iscoroutine(result):
+            result = _resolve_coroutine(result)
     except Exception as exc:  # noqa: BLE001 — we want to capture any failure mode
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         return Trace(
