@@ -25,8 +25,11 @@ classifiers = [
 ]
 dependencies = [
     # Engine — installed as a local path dep during development;
-    # released versions will pin to a PyPI version once tagged.
-    "agentprdiff>=0.2.5",
+    # released versions pin to PyPI. >=0.5.0 for multi-run/concurrency/
+    # strict-judge/frozen baselines; the runner shim additionally uses the
+    # engine's run_iter streaming API when present and falls back to a
+    # legacy loop on older engines.
+    "agentprdiff>=0.5.0",
     # Web framework
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",

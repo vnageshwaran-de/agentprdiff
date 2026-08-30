@@ -204,7 +204,14 @@ class Runner:
                  runs: int = 1, concurrency: int = 1) -> None: ...
     def record(self, suite: Suite) -> RunReport: ...
     def check(self, suite: Suite) -> RunReport: ...
+    def run_iter(self, suite: Suite, *, mode: str) -> Iterator[CaseReport]: ...
 ```
+
+`run_iter` is the streaming form for integrators (dashboards, Studio):
+it yields one finished `CaseReport` per case, in suite order, as each
+completes — with semantics identical to `record`/`check` (multi-run,
+`min_pass_rate`, frozen baseline verdicts, concurrency). `record` and
+`check` are thin wrappers that collect it into a `RunReport`.
 
 `record` saves each trace as the baseline (always single-run — a
 baseline is one known-good trace). `check` saves to `runs/<timestamp>/`

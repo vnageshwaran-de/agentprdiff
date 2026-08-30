@@ -11,6 +11,7 @@ Two modes:
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -174,63 +175,79 @@ class Runner:
 
     # --------------------------------------------------------------- impl
 
-    def _run(self, suite: Suite, *, mode: str) -> RunReport:
+    def run_iter(self, suite: Suite, *, mode: str) -> Iterator[CaseReport]:
+        """Stream one finished :class:`CaseReport` per case, in suite order.
+
+        The public streaming API for integrators (Studio, dashboards,
+        progress UIs) that want per-case results as they complete instead
+        of waiting for the whole :class:`RunReport`. Semantics are
+        identical to :meth:`record` / :meth:`check` — multi-run attempts,
+        `min_pass_rate`, persisted baseline verdicts, and concurrency all
+        apply; storage writes, diffing, and report assembly happen on the
+        calling thread as each case's execution finishes.
+
+        ``mode`` is ``"record"`` or ``"check"``.
+        """
+        if mode not in ("record", "check"):
+            raise ValueError(f"mode must be 'record' or 'check', got {mode!r}")
         self.store.ensure_initialized()
         run_id = self.store.fresh_run_id()
-        report = RunReport(suite_name=suite.name, mode=mode)
-
         runs = self.runs if mode == "check" else 1
 
         # Execute every case's attempts — concurrently on a bounded thread
         # pool when concurrency > 1 (agent suites are I/O-bound, so threads
         # give near-linear wall-clock speedups for sync and async agents
         # alike). `executor.map` preserves suite order. Storage writes,
-        # diffing, and report assembly happen below on this thread.
+        # diffing, and report assembly happen on the calling thread.
         def execute(case: Case) -> tuple[Trace, list[GradeResult], int]:
             return _execute_case(suite, case, runs)
 
         if self.concurrency > 1 and len(suite.cases) > 1:
             workers = min(self.concurrency, len(suite.cases))
-            with ThreadPoolExecutor(max_workers=workers) as executor:
-                executed = list(executor.map(execute, suite.cases))
+            executor = ThreadPoolExecutor(max_workers=workers)
+            executed: Iterator[tuple[Trace, list[GradeResult], int]] = executor.map(
+                execute, suite.cases
+            )
         else:
-            executed = [execute(case) for case in suite.cases]
+            executor = None
+            executed = (execute(case) for case in suite.cases)
 
-        for case, (trace, grader_results, runs_passed) in zip(
-            suite.cases, executed, strict=True
-        ):
-            # Persist grader results inside the trace so baselines are truly
-            # frozen: check mode reads the recorded verdicts instead of
-            # re-running graders against the baseline (which, for semantic
-            # graders, would mean a paid + nondeterministic LLM call against
-            # the baseline on every check).
-            trace.metadata["grader_results"] = [
-                r.model_dump(mode="json") for r in grader_results
-            ]
-            # Persist the current run either way (record = baseline, check = runs/).
-            delta: TraceDelta | None = None
-            if mode == "record":
-                self.store.save_baseline(trace)
-            else:
-                self.store.save_run_trace(run_id, trace)
-                baseline = self.store.load_baseline(suite.name, case.name)
-                baseline_results = None
-                if baseline is not None:
-                    baseline_results = _load_baseline_results(baseline)
-                    if baseline_results is None:
-                        # Legacy baseline (recorded before grader results were
-                        # persisted): fall back to re-running the graders
-                        # against the stored trace.
-                        baseline_results = [g(baseline) for g in case.expect]
-                delta = diff_traces(
-                    baseline=baseline,
-                    current=trace,
-                    current_results=grader_results,
-                    baseline_results=baseline_results,
-                )
+        try:
+            for case, (trace, grader_results, runs_passed) in zip(
+                suite.cases, executed, strict=True
+            ):
+                # Persist grader results inside the trace so baselines are
+                # truly frozen: check mode reads the recorded verdicts
+                # instead of re-running graders against the baseline (which,
+                # for semantic graders, would mean a paid + nondeterministic
+                # LLM call against the baseline on every check).
+                trace.metadata["grader_results"] = [
+                    r.model_dump(mode="json") for r in grader_results
+                ]
+                # Persist the current run either way (record = baseline,
+                # check = runs/).
+                delta: TraceDelta | None = None
+                if mode == "record":
+                    self.store.save_baseline(trace)
+                else:
+                    self.store.save_run_trace(run_id, trace)
+                    baseline = self.store.load_baseline(suite.name, case.name)
+                    baseline_results = None
+                    if baseline is not None:
+                        baseline_results = _load_baseline_results(baseline)
+                        if baseline_results is None:
+                            # Legacy baseline (recorded before grader results
+                            # were persisted): fall back to re-running the
+                            # graders against the stored trace.
+                            baseline_results = [g(baseline) for g in case.expect]
+                    delta = diff_traces(
+                        baseline=baseline,
+                        current=trace,
+                        current_results=grader_results,
+                        baseline_results=baseline_results,
+                    )
 
-            report.case_reports.append(
-                CaseReport(
+                yield CaseReport(
                     suite_name=suite.name,
                     case_name=case.name,
                     trace=trace,
@@ -240,5 +257,11 @@ class Runner:
                     runs_passed=runs_passed,
                     min_pass_rate=case.min_pass_rate,
                 )
-            )
+        finally:
+            if executor is not None:
+                executor.shutdown(wait=True)
+
+    def _run(self, suite: Suite, *, mode: str) -> RunReport:
+        report = RunReport(suite_name=suite.name, mode=mode)
+        report.case_reports.extend(self.run_iter(suite, mode=mode))
         return report
