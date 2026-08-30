@@ -101,7 +101,7 @@ flowchart TB
          current + grader results.
       7. A `CaseReport` is appended to the suite's `RunReport`.
    3. `TerminalReporter.render(report)` prints the table.
-   4. If `--json-out` was passed, `JsonReporter.render(report, path)`
+   4. If `--json-out` was passed, `JsonReporter.render_many(reports, path)`
       writes the JSON envelope.
 5. **Aggregate exit.** The CLI exits 1 iff any `RunReport.has_regression`
    is true; otherwise 0.
@@ -220,9 +220,6 @@ grader change.
 
 ## Limitations
 
-- **No parallel case execution.** Cases run serially per suite. If you
-  have 200 cases that each take 5s of network time, that's 17 minutes.
-  Parallelism is on the roadmap.
 - **No streaming reporter.** The whole `RunReport` is built before
   rendering. Long suites print nothing until they finish.
 - **Baselines are not versioned.** A baseline from `agentprdiff 0.1`

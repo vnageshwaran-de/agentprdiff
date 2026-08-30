@@ -6,13 +6,29 @@ sidebar_position: 10
 
 # Roadmap
 
-`agentprdiff` is **alpha** (0.2.x). The core model, CLI, and OpenAI /
-Anthropic SDK adapters are stable. The OpenAI adapter covers both sync
-`OpenAI` and async `AsyncOpenAI` clients via the same
-`instrument_client` context manager.
+`agentprdiff` is at **0.5.x**. The core model, CLI, OpenAI / Anthropic
+SDK adapters, multi-run flakiness handling, parallel execution, and the
+GitHub Action are stable.
 
-## On the 0.3 roadmap
+## Recently shipped (0.5.0)
 
+- `check --strict-judge` — a silently-degraded semantic judge fails CI.
+- Stable assertion identity (`id=` on every grader factory).
+- Frozen baselines — grader verdicts persisted at `record` time; no more
+  judge calls against baselines during `check`.
+- Multi-run flakiness handling (`--runs N` + per-case `min_pass_rate`).
+- Parallel case execution (`--concurrency N`).
+- Native `async def` agent support — no `asyncio.run` bridge needed.
+- The official [GitHub Action](./scenarios/ci-cd.md) with PR-comment
+  behavioral diffs.
+- The reproducible [model-swap benchmark](./benchmark.md).
+
+## Next up
+
+- **Latency tolerance relative to baseline.** `latency_lt_ms` is an
+  absolute budget, but CI runners are slower than the laptop that
+  recorded the baseline; a relative multiplier ("fail if > 2× baseline")
+  removes an environment-sensitivity false-positive class.
 - **Async Anthropic adapter.** Today the Anthropic adapter is sync only.
   Mirror the OpenAI sync/async detection so `AsyncAnthropic` clients
   work with the same `instrument_client` API.
@@ -27,9 +43,6 @@ Anthropic SDK adapters are stable. The OpenAI adapter covers both sync
 
 ## Under consideration
 
-- **Parallel case execution.** Run cases within a suite concurrently
-  with a thread or process pool. Useful for suites where each case is
-  bottlenecked on network latency.
 - **Streaming reporter.** Print case results as they finish instead of
   buffering until the end. Important for long suites where the user
   wants early signal.

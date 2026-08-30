@@ -67,8 +67,15 @@ what it did, and compares runs across time.
 | Pluggable LLM judge | OpenAI, Anthropic, custom callable, or a deterministic `fake_judge`. |
 | JSON baseline store | Committed under `.agentprdiff/baselines/`; reviewers see the diff in PRs. |
 | Trace differ | Per-case `TraceDelta`: assertion changes, cost / latency / token deltas, tool-sequence diff, unified output diff. |
-| Five-command CLI | `init`, `record`, `check`, `review`, `scaffold`, `diff`. |
+| Six-command CLI | `init`, `record`, `check`, `review`, `scaffold`, `diff`. |
 | OpenAI + Anthropic SDK adapters | One `with` block auto-records every model and tool call (sync **and** async OpenAI). |
+| Async agents, natively | An `async def` agent needs no wrapper — the runner resolves the coroutine, even inside Jupyter. |
+| Flakiness guard | `check --runs 3` with per-case `min_pass_rate` tolerates a stochastic wobble without letting real regressions through. |
+| Parallel execution | `--concurrency N` runs cases on a thread pool — near-linear wall-clock speedup for I/O-bound suites. |
+| Strict judging | `check --strict-judge` fails CI when the semantic judge silently fell back to keyword matching. |
+| Stable assertion identity | Give graders an `id=` and renames stop reading as removed + added assertions. |
+| **GitHub Action** | `uses: vnageshwaran-de/agentprdiff@main` posts the behavioral diff as a living PR comment — see [CI/CD](./scenarios/ci-cd.md). |
+| **Reproducible benchmark** | A [model-swap case study](./benchmark.md) with committed results, re-runnable for cents. |
 | OpenAI-compatible providers | Groq, Gemini, OpenRouter, Ollama, vLLM, Together, Fireworks, DeepInfra. |
 | Case filters | `--case`, `--skip`, globs, negation, `--list` — *like `pytest -k`*. |
 | Local iteration loop | `agentprdiff review` always exits 0 with a verbose per-case panel. |

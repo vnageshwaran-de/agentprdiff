@@ -62,9 +62,22 @@ agentprdiff review suite.py --case refund_happy_path
 ls suite.py my_agent.py | entr -c agentprdiff review suite.py --case refund_happy_path
 ```
 
-## Async agents (`AsyncOpenAI`, asyncio.run)
+## Async agents
 
-The runner is sync — bridge with `asyncio.run`. The OpenAI adapter detects
+`async def` agents work natively: pass the coroutine function straight to
+`suite(agent=...)` and the runner resolves it — including from inside an
+already-running event loop (Jupyter, async test runners), where it runs on
+a dedicated thread. No `asyncio.run` bridge is needed:
+
+```python
+async def my_agent(query: str):
+    ...
+    return final_text, trace
+
+s = suite(name="billing", agent=my_agent, cases=[...])  # just works
+```
+
+On the SDK side, the OpenAI adapter detects
 an `AsyncOpenAI` client at entry and installs an awaitable patched
 `create`; the `with` block stays a regular `with` (the patch is bound to
 the client *instance*, not the event loop):
@@ -87,10 +100,10 @@ async def my_agent_async(query: str):
         )
         # ... your loop, using `await tools[name](**args)` for async tools ...
         return final_text, trace
-
-def my_agent(query: str):
-    return asyncio.run(my_agent_async(query))
 ```
+
+(Older versions required wrapping this in `asyncio.run`; since 0.5.0 the
+async function itself is a valid agent.)
 
 `instrument_tools` mirrors per tool: `async def` tools come back
 awaitable, sync tools stay sync, and a single tool map can mix both.

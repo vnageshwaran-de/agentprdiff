@@ -69,7 +69,7 @@ agentprdiff record suite.py     # save this run as the baseline
 agentprdiff check  suite.py     # in CI: diff vs baseline, exit 1 on regression
 ```
 
-That's the whole product. Five CLI commands (`init`, `record`, `check`, `review`, `scaffold`). One Python file. Zero framework lock-in.
+That's the whole product. Six CLI commands (`init`, `record`, `check`, `review`, `scaffold`, `diff`). One Python file. Zero framework lock-in.
 
 ## What's in the box
 
@@ -79,6 +79,8 @@ That's the whole product. Five CLI commands (`init`, `record`, `check`, `review`
 - **Diff engine** — per-case `TraceDelta` with assertion pass/fail changes, cost delta, latency delta, tool-sequence changes, and a unified output diff.
 - **CI-ready CLI** — exit 1 on regression, `--json-out` for artifact archiving, Rich-formatted terminal output, `--strict-judge` so a missing judge key can't green-light keyword matching, and `--runs N` + per-case `min_pass_rate` so one stochastic wobble doesn't fail the build.
 - **GitHub Action with PR comments** — `uses: vnageshwaran-de/agentprdiff@main` runs `check` and posts the behavioral diff (assertion flips, cost/latency deltas, output diffs) as a living comment on the pull request. [Docs](https://agentprdiff.dev/scenarios/ci-cd/).
+- **Async agents + parallel execution** — `async def` agents need no wrapper, and `--concurrency N` runs cases on a thread pool for near-linear wall-clock speedups.
+- **Reproducible model-swap benchmark** — a public case study ([agentprdiff.dev/benchmark](https://agentprdiff.dev/benchmark/)) showing the Sonnet→Haiku downgrade breaking an agent's format contract while every answer stayed correct; re-runnable for cents from [`benchmark/`](benchmark/).
 - **Zero SDK lock-in** — works with OpenAI, Anthropic, Gemini, Bedrock, LangChain, LangGraph, LlamaIndex, Vercel AI SDK, custom wrappers — if you can wrap your agent in a function, `agentprdiff` can test it.
 - **One-line SDK adapters** — `with instrument_client(client) as trace:` automatically records every LLM and tool call when you're on the OpenAI Python SDK (sync **or** async — `AsyncOpenAI` is supported by the same context manager) or any OpenAI-compatible provider (Groq / Gemini / OpenRouter / Ollama / vLLM / Together / Fireworks / DeepInfra) or the Anthropic SDK. No manual `Trace` wiring required.
 

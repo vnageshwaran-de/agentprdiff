@@ -174,8 +174,13 @@ Two usual causes:
 
 ## Asyncio: "RuntimeError: This event loop is already running"
 
-You called `asyncio.run` from inside an already-running event loop
-(common in Jupyter or some test runners). For agentprdiff:
+Since 0.5.0 you usually don't need a bridge at all: pass the `async def`
+function itself as the agent and the runner resolves the coroutine —
+including from inside an already-running event loop (Jupyter, async test
+runners), where it runs on a dedicated thread.
+
+If you're on an older version, or you call `asyncio.run` yourself inside
+your own wrapper, the classic fix applies:
 
 ```python
 def my_agent(query):
@@ -187,8 +192,8 @@ def my_agent(query):
     return loop.run_until_complete(my_agent_async(query))
 ```
 
-Long-term, push the asyncio bridge into your eval wrapper, not into
-production code.
+The simplest long-term fix: delete the wrapper and hand the async
+function straight to `suite(agent=...)`.
 
 ## "test_runner.py::test_record_overwrites_baselines fails"
 

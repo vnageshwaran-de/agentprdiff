@@ -44,7 +44,7 @@ Construct a `Suite`.
 my_suite = suite(name="billing", agent=my_agent, cases=[...])
 ```
 
-## `case(name, input, expect, tags=None)`
+## `case(name, input, expect, tags=None, min_pass_rate=1.0)`
 
 Construct a `Case`.
 
@@ -54,6 +54,7 @@ Construct a `Case`.
 | `input` | `Any` | required | Forwarded verbatim to `agent(input)`. |
 | `expect` | `list[Grader]` | required | Each grader is `Callable[[Trace], GradeResult]`. |
 | `tags` | `list[str] \| None` | `None` | Free-form tags for grouping / filtering by future tooling. |
+| `min_pass_rate` | `float` | `1.0` | With `check --runs N`: the case passes when at least this fraction of attempts fully pass. `1.0` = every attempt. |
 
 ```python
 case(name="happy_path", input="…", expect=[contains("ok")], tags=["smoke"])
@@ -82,6 +83,7 @@ class Case(BaseModel):
     input: Any
     expect: list[Grader] = []
     tags: list[str] = []
+    min_pass_rate: float = 1.0   # (0, 1]; only matters with check --runs N
 ```
 
 ## `Trace`
@@ -148,12 +150,18 @@ class ToolCall(BaseModel):
 class GradeResult(BaseModel):
     passed: bool
     grader_name: str
+    grader_id: str | None = None   # stable identity for baseline matching
     reason: str = ""
     metadata: dict[str, Any] = {}
 ```
 
 `grader_name` is what reporters use as the human label — keep it
-descriptive (`contains('refund')`, not `<lambda>`).
+descriptive (`contains('refund')`, not `<lambda>`). `grader_id` is set by
+the `id=` keyword on grader factories; diffs match assertions by it when
+both sides have one, so renamed arguments don't read as removed + added
+assertions. `metadata["silent_fallback"]` marks a `semantic()` result
+graded by `fake_judge` via silent fallback (what `check --strict-judge`
+refuses).
 
 ## `Grader`
 
@@ -192,14 +200,19 @@ Behavior:
 
 ```python
 class Runner:
-    def __init__(self, store: BaselineStore) -> None: ...
+    def __init__(self, store: BaselineStore | TraceStore, *,
+                 runs: int = 1, concurrency: int = 1) -> None: ...
     def record(self, suite: Suite) -> RunReport: ...
     def check(self, suite: Suite) -> RunReport: ...
 ```
 
-`record` saves each trace as the baseline. `check` saves to
-`runs/<timestamp>/` and compares against the baseline, producing a
-`TraceDelta` per case.
+`record` saves each trace as the baseline (always single-run — a
+baseline is one known-good trace). `check` saves to `runs/<timestamp>/`
+and compares against the baseline, producing a `TraceDelta` per case;
+with `runs > 1` each case executes that many times and passes when at
+least its `min_pass_rate` fraction of attempts fully pass. `concurrency`
+executes up to that many cases at once on a thread pool (your agent must
+be thread-safe); report order always matches suite order.
 
 ```python
 from agentprdiff import Runner, BaselineStore
@@ -234,18 +247,26 @@ class RunReport(BaseModel):
 class CaseReport(BaseModel):
     suite_name: str
     case_name: str
-    trace: Trace
-    grader_results: list[GradeResult]
+    trace: Trace                       # the representative attempt
+    grader_results: list[GradeResult]  # from the representative attempt
     delta: TraceDelta | None = None
+    runs_total: int = 1
+    runs_passed: int = 1
+    min_pass_rate: float = 1.0
 
+    @property
+    def pass_rate(self) -> float: ...
     @property
     def passed(self) -> bool: ...
     @property
     def has_regression(self) -> bool: ...
 ```
 
-`passed` = all graders passed *and* `trace.error is None`.
-`has_regression` = `not passed` *or* `delta.has_regression`.
+`passed` = `pass_rate >= min_pass_rate` (with a single run this reduces
+to: all graders passed *and* `trace.error is None`).
+`has_regression` = `not passed` *or* `delta.has_regression`. With
+`--runs N` the `trace` / `grader_results` belong to the *representative*
+attempt: the last fully-passing one when any exists, otherwise the last.
 
 ## `TraceDelta`
 
@@ -280,6 +301,7 @@ class TraceDelta(BaseModel):
 ```python
 class AssertionChange(BaseModel):
     grader_name: str
+    grader_id: str | None = None    # matched by id when both sides have one
     baseline_passed: bool | None    # None = grader didn't exist in baseline
     current_passed: bool
     current_reason: str = ""

@@ -286,7 +286,7 @@ jobs:
         with: { name: agentprdiff, path: artifacts/ }
 ```
 
-That's it. Five commands, one Python file, zero framework lock-in.
+That's it. Six commands, one Python file, zero framework lock-in.
 
 ---
 

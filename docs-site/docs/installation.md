@@ -143,7 +143,7 @@ Verify:
 
 ```bash
 agentprdiff --version
-# agentprdiff, version 0.2.4
+# agentprdiff, version 0.5.0
 ```
 
 !!! tip "Multiple Python versions on macOS / Linux?"

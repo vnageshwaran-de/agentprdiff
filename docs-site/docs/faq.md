@@ -49,6 +49,11 @@ whatever keys they always used (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`,
 …). The semantic-grader judge uses an API key when available and falls
 back to `fake_judge` (deterministic keyword matching) when not.
 
+In CI, pair that fallback with `check --strict-judge` so a *missing* key
+fails the build instead of silently downgrading your semantic assertions
+to keyword matching. Explicit opt-in via `AGENTPRDIFF_JUDGE=fake` still
+passes.
+
 ## How big is the JSON baseline?
 
 Tens of KB per case for a typical agent (one or two LLM calls, a couple

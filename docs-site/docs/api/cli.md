@@ -19,7 +19,7 @@ agentprdiff [--root PATH] [--version] <command> [args]
 | Option | Default | Description |
 |---|---|---|
 | `--root` | `.agentprdiff` | Directory where baselines and runs live. |
-| `--version` | — | Print the installed version (`agentprdiff, version 0.2.3`) and exit. |
+| `--version` | — | Print the installed version (`agentprdiff, version 0.5.0`) and exit. |
 | `--help` | — | Show help and exit. |
 
 ## `agentprdiff init`
@@ -35,17 +35,18 @@ agentprdiff init
 
 Idempotent. Running it twice does nothing the second time.
 
-## `agentprdiff record SUITE_FILE`
+## `agentprdiff record SUITE_FILES...`
 
-Run every suite in `SUITE_FILE` and save each trace as the canonical
-baseline.
+Run every suite in the given file(s) — globs like `suites/*.py` expand
+in your shell — and save each trace as the canonical baseline.
 
 | Option | Description |
 |---|---|
-| `--json-out PATH` | Also write a JSON report to `PATH`. Overwrites every run. |
+| `--json-out PATH` | Also write a JSON report (`{"reports": [...]}` covering every suite in the invocation) to `PATH`. Overwrites every run. |
 | `--case PATTERN` | Only record cases matching `PATTERN`. Repeatable; comma-split. |
 | `--skip PATTERN` | Skip cases matching `PATTERN`. Same syntax. |
 | `--list` | Print suite/case names and exit without running. |
+| `--concurrency N` | Execute up to N cases at once on a thread pool (default 1). Your agent must be thread-safe. |
 
 ```bash
 agentprdiff record suites/billing.py
@@ -61,17 +62,21 @@ agentprdiff record suites/billing.py --case refund_happy_path
 in place. Re-running `record` with the same suite shows up as a regular
 git diff in the next PR.
 
-## `agentprdiff check SUITE_FILE`
+## `agentprdiff check SUITE_FILES...`
 
-Run every suite and diff against saved baselines. The CI command.
+Run every suite in the given file(s) and diff against saved baselines.
+The CI command.
 
 | Option | Description |
 |---|---|
-| `--json-out PATH` | Write a JSON report to `PATH`. Overwrites every run. |
+| `--json-out PATH` | Write a JSON report (`{"reports": [...]}` covering every suite in the invocation) to `PATH`. Overwrites every run. |
 | `--case PATTERN` | Only check matching cases. |
 | `--skip PATTERN` | Skip matching cases. |
 | `--list` | Print case names and exit. |
 | `--fail-on/--no-fail-on` | When `--no-fail-on`, regressions are reported but the exit code stays 0. Default `--fail-on`. |
+| `--strict-judge` | Exit 1 when any `semantic()` grader was judged by `fake_judge` via silent fallback (no judge env var, no API key). Recommended in CI; default in v1.0. |
+| `--runs N` | Execute each case N times; the case passes when ≥ its `min_pass_rate` fraction of attempts fully pass. The flakiness guard. |
+| `--concurrency N` | Execute up to N cases at once on a thread pool. Pairs well with `--runs`. |
 
 ```bash
 agentprdiff check suites/*.py
@@ -79,7 +84,8 @@ agentprdiff check suites/billing.py --case "*refund*" --json-out art/check.json
 ```
 
 **Exit codes.** `0` on no regression. `1` on any regression (with
-`--fail-on`). `2` on filter-matched-zero-cases.
+`--fail-on`) or a `--strict-judge` violation. `2` on
+filter-matched-zero-cases.
 
 **Side effects.** Writes `runs/<timestamp>/<suite>/<case>.json` per case
 (gitignored). Each `check` invocation creates a fresh timestamped
